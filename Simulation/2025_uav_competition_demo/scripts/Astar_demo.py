@@ -566,8 +566,8 @@ class Controller:
         self.astar_plan_and_fly()
         self.custom_fly_pose()
         self.return_to_origin_pose()
-        self.land()
         self.servo.servo_init()
+        self.land()
         self.state = 10 # 0: 等待开始 1: 解锁无人机 2: 起飞 3: 随机避障区 4: 穿框区 5: 风扰区 6: 投送区 7: 投送完成 8: 返航 9: 降落 10:结束
         rospy.sleep(3)
 
