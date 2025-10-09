@@ -54,7 +54,6 @@
                                     --mavlink_cam_udp_port=$(arg mavlink_cam_udp_port) $(find sunray_simulator)/models/drone_models/$(arg vehicle)/$(arg vehicle).sdf.jinja $(find sunray_simulator)"/>
         <param command="$(arg cmd)" name="sdf_$(arg vehicle)$(arg ID)"/>
 
-
         <!-- 启动PX4 SITL -->
         <arg name="interactive" default="true"/>
         <arg unless="$(arg interactive)" name="px4_command_arg1" value=""/>
