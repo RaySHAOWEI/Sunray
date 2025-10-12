@@ -13,7 +13,34 @@ void Gazebo_model::init(ros::NodeHandle &nh)
     uav2_gazebo_pose_sub = nh.subscribe<nav_msgs::Odometry>("/uav_2/gazebo_pose", 10, &Gazebo_model::uav2_gazebo_pose_cb, this);
     uav3_gazebo_pose_sub = nh.subscribe<nav_msgs::Odometry>("/uav_3/gazebo_pose", 10, &Gazebo_model::uav3_gazebo_pose_cb, this);
 
+    // 【发布】设置模型位置
+    model_state_pub = nh.advertise<gazebo_msgs::ModelState>("/gazebo/set_model_state", 1);
+
+
+
+
 }
+
+void Gazebo_model::set_model_state(string model_name, double x, double y, double z, double yaw)
+{
+    gazebo_msgs::ModelState model_state;
+
+    model_state.model_name = model_name;
+    model_state.pose.position.x = x;
+    model_state.pose.position.y = y;
+    model_state.pose.position.z = z;
+
+    Eigen::Vector3d att;
+    att << 0.0, 0.0, yaw;
+    Eigen::Quaterniond q_des = quaternion_from_rpy(att);
+    model_state.pose.orientation.x = q_des.x();
+    model_state.pose.orientation.y = q_des.y();
+    model_state.pose.orientation.z = q_des.z();
+    model_state.pose.orientation.w = q_des.w();
+    model_state.reference_frame = "ground_plane::link";    
+    model_state_pub.publish(model_state);
+}
+
 
 void Gazebo_model::uav1_gazebo_pose_cb(const nav_msgs::Odometry::ConstPtr &msg)
 {

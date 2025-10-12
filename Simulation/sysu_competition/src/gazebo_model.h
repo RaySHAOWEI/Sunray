@@ -43,5 +43,7 @@ public:
     void init(ros::NodeHandle &nh); 
     void debug();
 
+    void set_model_state(string model_name, double x, double y, double z, double yaw);
+
 
 };
