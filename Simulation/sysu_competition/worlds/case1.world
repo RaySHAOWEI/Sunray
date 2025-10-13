@@ -100,10 +100,27 @@
       </include>
     </model>
 
+    <!-- 无人车 1-3架 -->
+    <model name='ugv_1'>
+      <include>
+        <uri>model://fake_ugv1</uri>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+      </include>
+    </model>
 
+    <model name='ugv_2'>
+      <include>
+        <uri>model://fake_ugv2</uri>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+      </include>
+    </model>
 
-
-
-
+    <model name='ugv_3'>
+      <include>
+        <uri>model://fake_ugv3</uri>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+      </include>
+    </model>
+    
     </world>
 </sdf>

@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <sdf version="1.6">
-  <model name='fake_ugv'>
+  <model name='fake_ugv3'>
     <static>1</static>
     <link name='base_link'>
       <pose>0 0 0 0 -0 0</pose>
@@ -9,7 +9,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>model://fake_ugv/meshes/chassis_link.STL</uri>
+            <uri>model://fake_ugv3/meshes/chassis_link.STL</uri>
           </mesh>
         </geometry>
         <material>
@@ -24,7 +24,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>model://fake_ugv/meshes/top_link.STL</uri>
+            <uri>model://fake_ugv3/meshes/top_link.STL</uri>
           </mesh>
         </geometry>
         <material>
@@ -39,7 +39,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>model://fake_ugv/meshes/battery_link.STL</uri>
+            <uri>model://fake_ugv3/meshes/battery_link.STL</uri>
           </mesh>
         </geometry>
         <material>
@@ -54,7 +54,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>model://fake_ugv/meshes/housing_link.STL</uri>
+            <uri>model://fake_ugv3/meshes/housing_link.STL</uri>
           </mesh>
         </geometry>
         <material>
@@ -69,7 +69,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>model://fake_ugv/meshes/antenna_link.STL</uri>
+            <uri>model://fake_ugv3/meshes/antenna_link.STL</uri>
           </mesh>
         </geometry>
         <material>
@@ -84,7 +84,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>model://fake_ugv/meshes/antenna_link.STL</uri>
+            <uri>model://fake_ugv3/meshes/antenna_link.STL</uri>
           </mesh>
         </geometry>
         <material>
@@ -104,7 +104,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>model://fake_ugv/meshes/wheel_link.STL</uri>
+            <uri>model://fake_ugv3/meshes/wheel_link.STL</uri>
           </mesh>
         </geometry>
         <material>
@@ -140,7 +140,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>model://fake_ugv/meshes/wheel_link.STL</uri>
+            <uri>model://fake_ugv3/meshes/wheel_link.STL</uri>
           </mesh>
         </geometry>
         <material>
@@ -176,7 +176,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>model://fake_ugv/meshes/wheel_link.STL</uri>
+            <uri>model://fake_ugv3/meshes/wheel_link.STL</uri>
           </mesh>
         </geometry>
         <material>
@@ -212,7 +212,7 @@
         <geometry>
           <mesh>
             <scale>1 1 1</scale>
-            <uri>model://fake_ugv/meshes/wheel_link.STL</uri>
+            <uri>model://fake_ugv3/meshes/wheel_link.STL</uri>
           </mesh>
         </geometry>
         <material>
@@ -242,8 +242,35 @@
       </axis>
     </joint>
 
+    <!-- plugins: libgazebo_ros_p3d -->
+    <!-- 发布真值,模拟vicon系统 -->
+    <plugin name="p3d_base_controller" filename="libgazebo_ros_p3d.so">
+      <alwaysOn>true</alwaysOn>
+      <updateRate>50.0</updateRate>
+      <bodyName>base_link</bodyName>
+      <topicName>/ugv_3/gazebo_pose</topicName>
+      <gaussianNoise>0.00</gaussianNoise>
+      <frameName>world</frameName>
+      <xyzOffsets>0 0 0</xyzOffsets>
+      <rpyOffsets>0 0 0</rpyOffsets>
+    </plugin>
 
-
+    <include>
+      <uri>model://camera_front</uri> 
+      <pose>0.12 0 0.025 0 0 0</pose>
+    </include>
+    <!-- 前视相机关节 -->
+    <joint name="Monocular_front_joint" type="fixed">
+      <child>camera_front::Monocular_front_link</child>
+      <parent>base_link</parent>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit>
+          <upper>0</upper>
+          <lower>0</lower>
+        </limit>
+      </axis>
+    </joint>
 
 
   </model>
