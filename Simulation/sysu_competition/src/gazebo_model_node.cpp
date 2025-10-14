@@ -31,8 +31,8 @@ int main(int argc, char **argv)
     sleep(5.0);          
 
     // 初始化外部估计类
-    Gazebo_model test;
-    test.init(nh);
+    Gazebo_model gazebo_model;
+    gazebo_model.init(nh);
 
     ros::Time last_time = ros::Time::now();
     // 主循环
@@ -41,14 +41,12 @@ int main(int argc, char **argv)
         ros::spinOnce();
 
         // 定时主循环更新
-        test.main_loop();
+        gazebo_model.main_loop_with_point();
 
         // 定时打印状态
         if (ros::Time::now() - last_time > ros::Duration(1.0) && flag_printf)
         {
-            test.debug();
-            // test.set_model_state("uav_2", 10,9.0,5,90.0/180.0*M_PI);
-            // test.set_model_state("uav_3", 10,8.0,5,180.0/180.0*M_PI);
+            gazebo_model.debug();
             last_time = ros::Time::now();
         }
 

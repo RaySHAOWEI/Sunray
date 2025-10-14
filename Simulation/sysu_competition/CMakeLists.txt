@@ -7,7 +7,7 @@ find_package(catkin REQUIRED COMPONENTS
   gazebo_plugins
   gazebo_ros
   roscpp
-  roscpp
+  roslib
   rospy
   geometry_msgs
   nav_msgs
@@ -59,8 +59,7 @@ include_directories(
 add_library(gazebo_model src/gazebo_model.cpp)
 add_executable(gazebo_model_node src/gazebo_model_node.cpp)
 add_dependencies(gazebo_model_node sysu_competition_gencpp)
-target_link_libraries(gazebo_model_node ${catkin_LIBRARIES})
-target_link_libraries(gazebo_model_node gazebo_model)
+target_link_libraries(gazebo_model_node ${catkin_LIBRARIES} gazebo_model)
 
 ## Mark cpp header files for installation
 install(DIRECTORY include/${PROJECT_NAME}/

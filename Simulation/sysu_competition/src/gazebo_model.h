@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ros/package.h>
 
 #define FLIP_ANGLE M_PI/3
 #define RC_DEADZONE 0.2
@@ -35,6 +36,14 @@ private:
     DataSet uav2_data;
     DataSet uav3_data;
 
+    DataSet ugv1_data;
+    DataSet ugv2_data;
+    DataSet ugv3_data;
+
+    DataSet solider1_data;
+    DataSet solider2_data;
+    DataSet solider3_data;
+
     // 无人机飞行相关参数
     struct Gazebomodel
     {
@@ -57,6 +66,11 @@ private:
     Gazebomodel ugv2;
     Gazebomodel ugv3;
 
+    Gazebomodel solider1;
+    Gazebomodel solider2;
+    Gazebomodel solider3;
+
+
     // 订阅句柄
     ros::Subscriber uav1_gazebo_pose_sub;
     ros::Subscriber uav2_gazebo_pose_sub;
@@ -73,9 +87,23 @@ private:
     void ugv2_gazebo_pose_cb(const nav_msgs::Odometry::ConstPtr &msg);  
     void ugv3_gazebo_pose_cb(const nav_msgs::Odometry::ConstPtr &msg); 
 
+    // 订阅句柄
+    ros::Subscriber solider1_gazebo_pose_sub;
+    ros::Subscriber solider2_gazebo_pose_sub;
+    ros::Subscriber solider3_gazebo_pose_sub;
+    void solider1_gazebo_pose_cb(const nav_msgs::Odometry::ConstPtr &msg);  
+    void solider2_gazebo_pose_cb(const nav_msgs::Odometry::ConstPtr &msg);  
+    void solider3_gazebo_pose_cb(const nav_msgs::Odometry::ConstPtr &msg); 
 
     void set_uav1_vel(double vel_x, double vel_y, double vel_z, double vel_yaw);
-    int read_data_from_file(const char* filename, DataSet* data);
+    void set_uav2_vel(double vel_x, double vel_y, double vel_z, double vel_yaw);
+    void set_uav3_vel(double vel_x, double vel_y, double vel_z, double vel_yaw);
+    void set_ugv1_vel(double vel_x, double vel_y, double vel_z, double vel_yaw);
+    void set_ugv2_vel(double vel_x, double vel_y, double vel_z, double vel_yaw);
+    void set_ugv3_vel(double vel_x, double vel_y, double vel_z, double vel_yaw);
+
+    void read_point_data();
+    void read_data_from_file(const char* filename, DataSet* data);
     int find_nearest_time_index(const DataSet* dataset, double target_time);
 
     ros::Publisher model_state_pub;    // 【订阅】控制指令订阅
@@ -87,7 +115,8 @@ public:
 
     void init(ros::NodeHandle &nh); 
     void debug();
-    void main_loop();
+    void main_loop_with_point();
+    void main_loop_with_cmd();
 
     void set_model_state(string model_name, double x, double y, double z, double yaw);
 

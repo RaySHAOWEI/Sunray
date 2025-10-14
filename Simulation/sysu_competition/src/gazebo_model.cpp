@@ -15,6 +15,9 @@ void Gazebo_model::init(ros::NodeHandle &nh)
     ugv1_gazebo_pose_sub = nh.subscribe<nav_msgs::Odometry>("/ugv_1/gazebo_pose", 10, &Gazebo_model::ugv1_gazebo_pose_cb, this);
     ugv2_gazebo_pose_sub = nh.subscribe<nav_msgs::Odometry>("/ugv_2/gazebo_pose", 10, &Gazebo_model::ugv2_gazebo_pose_cb, this);
     ugv3_gazebo_pose_sub = nh.subscribe<nav_msgs::Odometry>("/ugv_3/gazebo_pose", 10, &Gazebo_model::ugv3_gazebo_pose_cb, this);
+    solider1_gazebo_pose_sub = nh.subscribe<nav_msgs::Odometry>("/solider_1/gazebo_pose", 10, &Gazebo_model::solider1_gazebo_pose_cb, this);
+    solider2_gazebo_pose_sub = nh.subscribe<nav_msgs::Odometry>("/solider_2/gazebo_pose", 10, &Gazebo_model::solider2_gazebo_pose_cb, this);
+    solider3_gazebo_pose_sub = nh.subscribe<nav_msgs::Odometry>("/solider_3/gazebo_pose", 10, &Gazebo_model::solider3_gazebo_pose_cb, this);
 
     // 【发布】设置模型位置
     model_state_pub = nh.advertise<gazebo_msgs::ModelState>("/gazebo/set_model_state", 1);
@@ -25,57 +28,153 @@ void Gazebo_model::init(ros::NodeHandle &nh)
     {
         ros::spinOnce();
 
-        if(uav1.get_init_pose && uav2.get_init_pose && uav3.get_init_pose)
+        if(uav1.get_init_pose && uav2.get_init_pose && uav3.get_init_pose 
+            && ugv1.get_init_pose && ugv2.get_init_pose && ugv3.get_init_pose 
+            && solider1.get_init_pose && solider2.get_init_pose && solider3.get_init_pose)
         {
-            Logger::print_color(int(LogColor::green), node_name, "无人机位置初始化成功");
+            Logger::print_color(int(LogColor::green), node_name, "Gazebo模型初始化成功");
             break;
         }else
         {
-            Logger::print_color(int(LogColor::red), node_name, "等待无人机位置初始化");
+            Logger::print_color(int(LogColor::red), node_name, "等待Gazebo模型初始化");
             sleep(2.0);
         }
     }
 
-    // 读取TXT数据
-    string file_name = "/home/amov/uav_point.txt";
-    int success = read_data_from_file(file_name.c_str(), &uav1_data);
-    
-    if (success) {
-        printf("数据读取成功！\n");
-    } else {
-        printf("数据读取失败！\n");
-        printf("请检查：\n");
-        printf("1. 文件 '%s' 是否存在于当前目录\n", file_name);
-        printf("2. 文件权限是否正确\n");
-    }
+    // 读取预设的脚本数据点
+    read_point_data();
 }
 
-void Gazebo_model::main_loop()
+void Gazebo_model::main_loop_with_point()
+{
+    // 仿真步长，该循环执行频率为20Hz，因此dt为0.05秒
+    float dt = 0.05;
+
+    int index;
+    // 根据当前任务时间查询最近的点索引，然后设置模型位置
+    index = find_nearest_time_index(&uav1_data, mission_time);
+    set_model_state("uav_1", uav1_data.points[index].x, uav1_data.points[index].y, uav1_data.points[index].z, uav1_data.points[index].yaw);
+    // 根据当前任务时间查询最近的点索引，然后设置模型位置
+    index = find_nearest_time_index(&uav2_data, mission_time);
+    set_model_state("uav_2", uav2_data.points[index].x, uav2_data.points[index].y, uav2_data.points[index].z, uav2_data.points[index].yaw);
+    // 根据当前任务时间查询最近的点索引，然后设置模型位置
+    index = find_nearest_time_index(&uav3_data, mission_time);
+    set_model_state("uav_3", uav3_data.points[index].x, uav3_data.points[index].y, uav3_data.points[index].z+1, uav3_data.points[index].yaw);
+    // 根据当前任务时间查询最近的点索引，然后设置模型位置
+    index = find_nearest_time_index(&ugv1_data, mission_time);
+    set_model_state("ugv_1", ugv1_data.points[index].x, ugv1_data.points[index].y, ugv1_data.points[index].z+2, ugv1_data.points[index].yaw);
+    // 根据当前任务时间查询最近的点索引，然后设置模型位置
+    index = find_nearest_time_index(&ugv2_data, mission_time);
+    set_model_state("ugv_2", ugv2_data.points[index].x, ugv2_data.points[index].y, ugv2_data.points[index].z+3, ugv2_data.points[index].yaw);
+    // 根据当前任务时间查询最近的点索引，然后设置模型位置
+    index = find_nearest_time_index(&ugv3_data, mission_time);
+    set_model_state("ugv_3", ugv3_data.points[index].x, ugv3_data.points[index].y, ugv3_data.points[index].z+4, ugv3_data.points[index].yaw);
+    // 根据当前任务时间查询最近的点索引，然后设置模型位置
+    index = find_nearest_time_index(&solider1_data, mission_time);
+    set_model_state("solider_1", solider1_data.points[index].x, solider1_data.points[index].y, solider1_data.points[index].z+5, solider1_data.points[index].yaw);
+    // 根据当前任务时间查询最近的点索引，然后设置模型位置
+    index = find_nearest_time_index(&solider2_data, mission_time);
+    set_model_state("solider_2", solider2_data.points[index].x, solider2_data.points[index].y, solider2_data.points[index].z+6, solider2_data.points[index].yaw);
+    // 根据当前任务时间查询最近的点索引，然后设置模型位置
+    index = find_nearest_time_index(&solider3_data, mission_time);
+    set_model_state("solider_3", solider3_data.points[index].x, solider3_data.points[index].y, solider3_data.points[index].z+7, solider3_data.points[index].yaw);
+    
+    // 更新时间
+    mission_time = mission_time + dt;
+}
+
+void Gazebo_model::main_loop_with_cmd()
 {
     // 仿真步长，该循环执行频率为20Hz，因此dt为0.05秒
     float dt = 0.05;
 
     set_uav1_vel(0.5,0,0,0);
-
+    
     // 根据当前位置和期望速度，更新设定位置
     uav1.set_pos[0] = uav1.model_pos[0] + uav1.model_vel[0] * dt;
     uav1.set_pos[1] = uav1.model_pos[1] + uav1.model_vel[1] * dt;
     uav1.set_pos[2] = uav1.model_pos[2] + uav1.model_vel[2] * dt;
     uav1.set_yaw = uav1.model_yaw + uav1.yaw_vel * dt;
+
+    uav2.set_pos[0] = uav2.model_pos[0] + uav2.model_vel[0] * dt;
+    uav2.set_pos[1] = uav2.model_pos[1] + uav2.model_vel[1] * dt;
+    uav2.set_pos[2] = uav2.model_pos[2] + uav2.model_vel[2] * dt;
+    uav2.set_yaw = uav2.model_yaw + uav2.yaw_vel * dt;
+
+    uav3.set_pos[0] = uav3.model_pos[0] + uav3.model_vel[0] * dt;
+    uav3.set_pos[1] = uav3.model_pos[1] + uav3.model_vel[1] * dt;
+    uav3.set_pos[2] = uav3.model_pos[2] + uav3.model_vel[2] * dt;
+    uav3.set_yaw = uav3.model_yaw + uav3.yaw_vel * dt;
+
+    ugv1.set_pos[0] = ugv1.model_pos[0] + ugv1.model_vel[0] * dt;
+    ugv1.set_pos[1] = ugv1.model_pos[1] + ugv1.model_vel[1] * dt;
+    ugv1.set_pos[2] = ugv1.model_pos[2] + ugv1.model_vel[2] * dt;
+    ugv1.set_yaw = ugv1.model_yaw + ugv1.yaw_vel * dt;
+
+    ugv2.set_pos[0] = ugv2.model_pos[0] + ugv2.model_vel[0] * dt;
+    ugv2.set_pos[1] = ugv2.model_pos[1] + ugv2.model_vel[1] * dt;
+    ugv2.set_pos[2] = ugv2.model_pos[2] + ugv2.model_vel[2] * dt;
+    ugv2.set_yaw = ugv2.model_yaw + ugv2.yaw_vel * dt;
+
+    ugv3.set_pos[0] = ugv3.model_pos[0] + ugv3.model_vel[0] * dt;
+    ugv3.set_pos[1] = ugv3.model_pos[1] + ugv3.model_vel[1] * dt;
+    ugv3.set_pos[2] = ugv3.model_pos[2] + ugv3.model_vel[2] * dt;
+    ugv3.set_yaw = ugv3.model_yaw + ugv3.yaw_vel * dt;
+
     // 设定模型位置
     set_model_state("uav_1", uav1.set_pos[0], uav1.set_pos[1], uav1.set_pos[2], uav1.set_yaw);
-
-    // 根据当前任务时间查询最近的点索引
-    int index = find_nearest_time_index(&uav1_data, mission_time);
-
-    set_model_state("uav_2", uav1_data.points[index].x, uav1_data.points[index].y, uav1_data.points[index].z, uav1_data.points[index].yaw);
-    set_model_state("uav_3", uav1_data.points[index].x, uav1_data.points[index].y, uav1_data.points[index].z+1, uav1_data.points[index].yaw);
-    set_model_state("ugv_1", uav1_data.points[index].x, uav1_data.points[index].y, uav1_data.points[index].z+2, uav1_data.points[index].yaw);
-    set_model_state("ugv_2", uav1_data.points[index].x, uav1_data.points[index].y, uav1_data.points[index].z+3, uav1_data.points[index].yaw);
-    set_model_state("ugv_3", uav1_data.points[index].x, uav1_data.points[index].y, uav1_data.points[index].z+4, uav1_data.points[index].yaw);
-    // 更新时间
-    mission_time = mission_time + dt;
+    set_model_state("uav_2", uav2.set_pos[0], uav2.set_pos[1], uav2.set_pos[2], uav2.set_yaw);
+    set_model_state("uav_3", uav3.set_pos[0], uav3.set_pos[1], uav3.set_pos[2], uav3.set_yaw);
+    set_model_state("ugv_1", ugv1.set_pos[0], ugv1.set_pos[1], ugv1.set_pos[2], ugv1.set_yaw);
+    set_model_state("ugv_2", ugv2.set_pos[0], ugv2.set_pos[1], ugv2.set_pos[2], ugv2.set_yaw);
+    set_model_state("ugv_3", ugv3.set_pos[0], ugv3.set_pos[1], ugv3.set_pos[2], ugv3.set_yaw);
 }
+
+void Gazebo_model::read_point_data()
+{
+    std::string file_name;
+
+    // 读取TXT数据
+    // TXT数据格式：第一列为时间（s）、第二列为X坐标（m）、第三列为Y坐标（m）、第四列为Z坐标（m）、第五列为偏航角（rad）
+    // 时间间隔为0.05秒，
+
+    // 1号无人机的数据点
+    file_name = "/home/amov/uav1_point.txt";
+    read_data_from_file(file_name.c_str(), &uav1_data);
+
+    // 2号无人机的数据点
+    file_name = "/home/amov/uav2_point.txt";
+    read_data_from_file(file_name.c_str(), &uav2_data);
+
+    // 3号无人机的数据点
+    file_name = "/home/amov/uav3_point.txt";
+    read_data_from_file(file_name.c_str(), &uav3_data);
+
+    // 1号无人车的数据点
+    file_name = "/home/amov/ugv1_point.txt";
+    read_data_from_file(file_name.c_str(), &ugv1_data);
+
+    // 2号无人车的数据点
+    file_name = "/home/amov/ugv2_point.txt";
+    read_data_from_file(file_name.c_str(), &ugv2_data);
+
+    // 3号无人车的数据点
+    file_name = "/home/amov/ugv3_point.txt";
+    read_data_from_file(file_name.c_str(), &ugv3_data);
+
+    // 1号士兵的数据点
+    file_name = "/home/amov/solider1_point.txt";
+    read_data_from_file(file_name.c_str(), &solider1_data);
+
+    // 2号士兵的数据点
+    file_name = "/home/amov/solider2_point.txt";
+    read_data_from_file(file_name.c_str(), &solider2_data);
+
+    // 3号士兵的数据点
+    file_name = "/home/amov/solider3_point.txt";
+    read_data_from_file(file_name.c_str(), &solider3_data);
+}
+
 
 // 设定无人机速度
 void Gazebo_model::set_uav1_vel(double vel_x, double vel_y, double vel_z, double vel_yaw)
@@ -85,6 +184,43 @@ void Gazebo_model::set_uav1_vel(double vel_x, double vel_y, double vel_z, double
     uav1.model_vel[2] = vel_z;
     uav1.yaw_vel = vel_yaw;     // rad/s
 }
+void Gazebo_model::set_uav2_vel(double vel_x, double vel_y, double vel_z, double vel_yaw)
+{
+    uav2.model_vel[0] = vel_x;  // m/s
+    uav2.model_vel[1] = vel_y;
+    uav2.model_vel[2] = vel_z;
+    uav2.yaw_vel = vel_yaw;     // rad/s
+}
+void Gazebo_model::set_uav3_vel(double vel_x, double vel_y, double vel_z, double vel_yaw)
+{
+    uav3.model_vel[0] = vel_x;  // m/s
+    uav3.model_vel[1] = vel_y;
+    uav3.model_vel[2] = vel_z;
+    uav3.yaw_vel = vel_yaw;     // rad/s
+}
+
+void Gazebo_model::set_ugv1_vel(double vel_x, double vel_y, double vel_z, double vel_yaw)
+{
+    ugv1.model_vel[0] = vel_x;  // m/s
+    ugv1.model_vel[1] = vel_y;
+    ugv1.model_vel[2] = vel_z;
+    ugv1.yaw_vel = vel_yaw;     // rad/s
+}
+void Gazebo_model::set_ugv2_vel(double vel_x, double vel_y, double vel_z, double vel_yaw)
+{
+    ugv2.model_vel[0] = vel_x;  // m/s
+    ugv2.model_vel[1] = vel_y;
+    ugv2.model_vel[2] = vel_z;
+    ugv2.yaw_vel = vel_yaw;     // rad/s
+}
+void Gazebo_model::set_ugv3_vel(double vel_x, double vel_y, double vel_z, double vel_yaw)
+{
+    ugv3.model_vel[0] = vel_x;  // m/s
+    ugv3.model_vel[1] = vel_y;
+    ugv3.model_vel[2] = vel_z;
+    ugv3.yaw_vel = vel_yaw;     // rad/s
+}
+
 
 void Gazebo_model::set_model_state(string model_name, double x, double y, double z, double yaw)
 {
@@ -109,13 +245,11 @@ void Gazebo_model::set_model_state(string model_name, double x, double y, double
 
 void Gazebo_model::debug()
 {
-    Logger::print_color(int(LogColor::green), node_name, "----------[Debug Info]-----------");
-
-    Logger::print_color(int(LogColor::green), "运行时间:",
+    Logger::print_color(int(LogColor::green), node_name, "----------[Debug Info]-----------", "运行时间:",
                         mission_time,
                         "[ s ]");
 
-    Logger::print_color(int(LogColor::green), "1号无人机位置[X Y Z yaw]:",
+    Logger::print_color(int(LogColor::green), "1号飞机位置[X Y Z yaw]:",
                         uav1.model_pos[0],
                         uav1.model_pos[1],
                         uav1.model_pos[2],
@@ -124,7 +258,7 @@ void Gazebo_model::debug()
                         "[deg]");
 
 
-    Logger::print_color(int(LogColor::green), "2号无人机位置[X Y Z yaw]:",
+    Logger::print_color(int(LogColor::green), "2号飞机位置[X Y Z yaw]:",
                         uav2.model_pos[0],
                         uav2.model_pos[1],
                         uav2.model_pos[2],
@@ -132,7 +266,7 @@ void Gazebo_model::debug()
                         uav2.model_yaw / M_PI * 180,
                         "[deg]");
 
-    Logger::print_color(int(LogColor::green), "3号无人机位置[X Y Z yaw]:",
+    Logger::print_color(int(LogColor::green), "3号飞机位置[X Y Z yaw]:",
                         uav3.model_pos[0],
                         uav3.model_pos[1],
                         uav3.model_pos[2],
@@ -141,7 +275,7 @@ void Gazebo_model::debug()
                         "[deg]");
 
 
-    Logger::print_color(int(LogColor::green), "1号无人车位置[X Y Z yaw]:",
+    Logger::print_color(int(LogColor::green), "1号车辆位置[X Y Z yaw]:",
                         ugv1.model_pos[0],
                         ugv1.model_pos[1],
                         ugv1.model_pos[2],
@@ -150,7 +284,7 @@ void Gazebo_model::debug()
                         "[deg]");
 
 
-    Logger::print_color(int(LogColor::green), "2号无人车位置[X Y Z yaw]:",
+    Logger::print_color(int(LogColor::green), "2号车辆位置[X Y Z yaw]:",
                         ugv2.model_pos[0],
                         ugv2.model_pos[1],
                         ugv2.model_pos[2],
@@ -158,23 +292,49 @@ void Gazebo_model::debug()
                         ugv2.model_yaw / M_PI * 180,
                         "[deg]");
 
-    Logger::print_color(int(LogColor::green), "3号无人车位置[X Y Z yaw]:",
+    Logger::print_color(int(LogColor::green), "3号车辆位置[X Y Z yaw]:",
                         ugv3.model_pos[0],
                         ugv3.model_pos[1],
                         ugv3.model_pos[2],
                         "[ m ]",
                         ugv3.model_yaw / M_PI * 180,
                         "[deg]");
+    Logger::print_color(int(LogColor::green), "1号士兵位置[X Y Z yaw]:",
+                        solider1.model_pos[0],
+                        solider1.model_pos[1],
+                        solider1.model_pos[2],
+                        "[ m ]",
+                        solider1.model_yaw / M_PI * 180,
+                        "[deg]");
+
+
+    Logger::print_color(int(LogColor::green), "2号士兵位置[X Y Z yaw]:",
+                        solider2.model_pos[0],
+                        solider2.model_pos[1],
+                        solider2.model_pos[2],
+                        "[ m ]",
+                        solider2.model_yaw / M_PI * 180,
+                        "[deg]");
+
+    Logger::print_color(int(LogColor::green), "3号士兵位置[X Y Z yaw]:",
+                        solider3.model_pos[0],
+                        solider3.model_pos[1],
+                        solider3.model_pos[2],
+                        "[ m ]",
+                        solider3.model_yaw / M_PI * 180,
+                        "[deg]");
+
+
 
 }
 
 
-int Gazebo_model::read_data_from_file(const char* filename, DataSet* data)
+void Gazebo_model::read_data_from_file(const char* filename, DataSet* data)
 {
    FILE* file = fopen(filename, "r");  // 以只读方式打开文件:cite[2]:cite[3]
     if (file == NULL) {
         printf("错误：无法打开文件 %s\n", filename);
-        return 0;
+        return;
     }
     
     char line[256];
@@ -193,7 +353,7 @@ int Gazebo_model::read_data_from_file(const char* filename, DataSet* data)
             printf("警告：第 %d 行数据格式错误，已跳过\n", data->count + 1);
         }
     }
-
+    printf("'%s'数据读取成功！\n", filename);
     printf("总共读取了 %d 组数据\n", data->count);
     
     if (data->count > 0) {
@@ -202,7 +362,6 @@ int Gazebo_model::read_data_from_file(const char* filename, DataSet* data)
     }
 
     fclose(file);  // 关闭文件:cite[2]
-    return 1;
 }
 
 
@@ -345,6 +504,66 @@ void Gazebo_model::ugv3_gazebo_pose_cb(const nav_msgs::Odometry::ConstPtr &msg)
     m.getRPY(roll, pitch, yaw);
 
     ugv3.model_yaw = yaw;
+}
+
+void Gazebo_model::solider1_gazebo_pose_cb(const nav_msgs::Odometry::ConstPtr &msg)
+{
+    if(!solider1.get_init_pose)
+    {
+        solider1.get_init_pose = true;
+    }
+
+    solider1.model_pos[0] = msg->pose.pose.position.x;
+    solider1.model_pos[1] = msg->pose.pose.position.y;
+    solider1.model_pos[2] = msg->pose.pose.position.z;
+
+    // 转为rpy
+    tf::Quaternion q(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
+    tf::Matrix3x3 m(q);
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);
+
+    solider1.model_yaw = yaw;
+}
+
+void Gazebo_model::solider2_gazebo_pose_cb(const nav_msgs::Odometry::ConstPtr &msg)
+{
+    if(!solider2.get_init_pose)
+    {
+        solider2.get_init_pose = true;
+    }
+
+    solider2.model_pos[0] = msg->pose.pose.position.x;
+    solider2.model_pos[1] = msg->pose.pose.position.y;
+    solider2.model_pos[2] = msg->pose.pose.position.z;
+
+    // 转为rpy
+    tf::Quaternion q(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
+    tf::Matrix3x3 m(q);
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);
+
+    solider2.model_yaw = yaw;
+}
+
+void Gazebo_model::solider3_gazebo_pose_cb(const nav_msgs::Odometry::ConstPtr &msg)
+{
+    if(!solider3.get_init_pose)
+    {
+        solider3.get_init_pose = true;
+    }
+
+    solider3.model_pos[0] = msg->pose.pose.position.x;
+    solider3.model_pos[1] = msg->pose.pose.position.y;
+    solider3.model_pos[2] = msg->pose.pose.position.z;
+
+    // 转为rpy
+    tf::Quaternion q(msg->pose.pose.orientation.x, msg->pose.pose.orientation.y, msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
+    tf::Matrix3x3 m(q);
+    double roll, pitch, yaw;
+    m.getRPY(roll, pitch, yaw);
+
+    solider3.model_yaw = yaw;
 }
 
 

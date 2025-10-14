@@ -122,5 +122,52 @@
       </include>
     </model>
     
+    <!-- 我方士兵 1-3人 -->
+    <model name='solider_1'>
+      <include>
+        <uri>model://solider_1</uri>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+      </include>
+    </model>
+
+    <model name='solider_2'>
+      <include>
+        <uri>model://solider_2</uri>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+      </include>
+    </model>
+
+    <model name='solider_3'>
+      <include>
+        <uri>model://solider_3</uri>
+        <pose>0.0 0.0 0.0 0 0 0</pose>
+      </include>
+    </model>
+
+    <!-- 我方士兵 1-3人 -->
+    <model name='person_walking1'>
+      <include>
+        <uri>model://person_walking</uri>
+        <pose>3.0 6.0 0.0 0 0 0</pose>
+      </include>
+    </model>
+
+    <model name='person_walking2'>
+      <include>
+        <uri>model://person_walking</uri>
+        <pose>-3.0 6.0 0.0 0 0 0</pose>
+      </include>
+    </model>
+
+    <model name='person_walking3'>
+      <include>
+        <uri>model://person_walking</uri>
+        <pose>-3.0 -6.8 0.0 0 0 3.14</pose>
+      </include>
+    </model>
+
+
+
+
     </world>
 </sdf>
