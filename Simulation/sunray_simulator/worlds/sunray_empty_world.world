@@ -53,11 +53,11 @@
 
     <!-- A ground plane -->
     <include>
-      <uri>model://ground_plane</uri>
+      <uri>model://ground_plane_yundrone</uri>
     </include>
 
-    <include>
+    <!-- <include>
       <uri>model://yundrone</uri>
-    </include>
+    </include> -->
   </world>
 </sdf>
