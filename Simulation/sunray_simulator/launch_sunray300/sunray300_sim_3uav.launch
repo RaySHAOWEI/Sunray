@@ -39,7 +39,7 @@
     <arg name="uav3_init_yaw" default="0.0"/>
 
     <!-- UAV1 -->
-    <include file="$(find sunray_simulator)/launch_basic/sunray_px4_basic_sunray300.launch">
+    <include file="$(find sunray_simulator)/launch_sunray300/sunray_px4_basic_sunray300.launch">
         <arg name="uav_id" value="$(arg uav1_id)" />
         <arg name="vehicle" value="$(arg vehicle)" />
         <arg name="uav_init_x" value="$(arg uav1_init_x)"/>
@@ -48,7 +48,7 @@
     </include>
 
     <!-- UAV2 -->
-    <include file="$(find sunray_simulator)/launch_basic/sunray_px4_basic_sunray300.launch">
+    <include file="$(find sunray_simulator)/launch_sunray300/sunray_px4_basic_sunray300.launch">
         <arg name="uav_id" value="$(arg uav2_id)" />
         <arg name="vehicle" value="$(arg vehicle)" />
         <arg name="uav_init_x" value="$(arg uav2_init_x)"/>
@@ -57,7 +57,7 @@
     </include>
 
     <!-- UAV3 -->
-    <include file="$(find sunray_simulator)/launch_basic/sunray_px4_basic_sunray300.launch">
+    <include file="$(find sunray_simulator)/launch_sunray300/sunray_px4_basic_sunray300.launch">
         <arg name="uav_id" value="$(arg uav3_id)" />
         <arg name="vehicle" value="$(arg vehicle)" />
         <arg name="uav_init_x" value="$(arg uav3_init_x)"/>
