@@ -12,7 +12,7 @@
     <!-- PX4滤波器参数 -->
     <arg name="est" default="ekf2"/>
     <!-- 无人机模型名字 -->
-    <arg name="vehicle" default="sunray150"/>
+    <arg name="vehicle" default="sunray300"/>
 
 	<!-- 无人机编号说明 -->
 	<!-- uav_id为Sunray中对无人机编号的定义，从1开始 -->
