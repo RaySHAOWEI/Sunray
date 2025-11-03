@@ -15,7 +15,7 @@
 
     <!-- 无人机配置 -->
     <!-- 无人机模型名称 -->
-    <arg name="vehicle" default="sunray150"/>
+    <arg name="vehicle" default="sunray300"/>
 
     <!--无人机编号-->
     <arg name="uav1_id" default="1"/>
