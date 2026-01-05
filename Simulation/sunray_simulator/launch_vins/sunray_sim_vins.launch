@@ -58,26 +58,6 @@
       <!-- <node pkg="tf" type="static_transform_publisher" name="livox_to_base_link" 
       args="0.036 -0.0155 0.075 0 0 0 base_link livox_base_link 100" /> -->
       
-      <!-- 启动控制节点 -->
-      <arg name="enable_control" default="false"/>
-      <group if="$(arg enable_control)">
-            <include file="$(find sunray_uav_control)/launch/sunray_control_node.launch">
-                  <arg name="launch-prefix" value="gnome-terminal --" />
-            </include>
-            <!-- 设置px4飞控的定位源 -->
-            <include file="$(find sunray_uav_control)/launch/external_fusion.launch">
-                  <!-- external_source = 2: Gazebo 真直，调试用  0: vins里程计的odom作为定位的odom -->
-                  <!-- <arg name="external_source" value="2" /> -->
-                  <arg name="external_source" value="0" /> 
-                  <arg name="position_topic" value="/vins_estimator/odometry" />
-                  <arg name="launch-prefix" value="gnome-terminal --" />
-            </include>
-            <!-- 设置为终端控制 -->
-            <include file="$(find sunray_uav_control)/launch_utils/terminal_control.launch">
-                  <arg name="launch-prefix" value="gnome-terminal --" />
-            </include>
-      </group>
-      
       <!-- 启动rviz -->
       <arg name="rviz_enable" default="true"/>
       <group if="$(arg rviz_enable)">
