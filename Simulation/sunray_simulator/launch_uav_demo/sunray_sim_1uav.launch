@@ -4,6 +4,8 @@
     <arg name="gazebo_enable" default="true"/>
     <arg name="gui" default="true"/>
     <arg name="world" default="$(find sunray_simulator)/worlds/sunray_empty_world.world"/>
+    <!-- <arg name="world" default="$(find sunray_simulator)/worlds/sandisland.world"/> -->
+
     <!-- 启动 Gazebo -->
     <group if="$(arg gazebo_enable)">
         <include file="$(find gazebo_ros)/launch/empty_world.launch">
@@ -21,6 +23,7 @@
     <!-- 无人机初始位置 -->
     <arg name="uav_init_x" default="0.0"/>
     <arg name="uav_init_y" default="0.0"/>
+    <arg name="uav_init_z" default="0.01"/>
     <arg name="uav_init_yaw" default="0.0"/>
 
     <!-- UAV1 -->
@@ -29,6 +32,7 @@
         <arg name="vehicle" value="$(arg vehicle)" />
         <arg name="uav_init_x" value="$(arg uav_init_x)"/>
         <arg name="uav_init_y" value="$(arg uav_init_y)"/>
+        <arg name="uav_init_z" value="$(arg uav_init_z)"/>
         <arg name="uav_init_yaw" value="$(arg uav_init_yaw)"/>
     </include>
 </launch>
