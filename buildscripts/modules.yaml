@@ -16,18 +16,24 @@ modules:
     source_path: "General_Module/sunray_uav_control"
     build_path: "build/sunray_uav_control"
     dependencies: ["sunray_common"]
-  
-  
-  sunray_fmt_control:
-    description: "FMT无人机控制模块，包含FMT无人机控制节点"
-    source_path: "General_Module/sunray_fmt_control"
-    build_path: "build/sunray_fmt_control"
-    dependencies: ["sunray_common"]
+
+  # Woosen控制模块
+  Woosen:
+    description: "Woosen控制模块"
+    source_path: "General_Module/woosen"
+    build_path: "build/woosen"
+    dependencies: ["sunray_common", "sunray_tutorial"]
 
   sunray_tutorial:
     description: "无人机控制接口示例代码模块，包括起飞降落、航点追踪、方形轨迹、圆形轨迹、六边形轨迹等示例代码"
     source_path: "General_Module/sunray_tutorial"
     build_path: "build/sunray_tutorial"
+    dependencies: ["sunray_common"]
+
+  sunray_fmt_control:
+    description: "FMT无人机控制模块，包含FMT无人机控制节点"
+    source_path: "General_Module/sunray_fmt_control"
+    build_path: "build/sunray_fmt_control"
     dependencies: ["sunray_common"]
     
   sunray_media:
@@ -182,12 +188,23 @@ modules:
     build_path: "build/vins_fusion"
     dependencies: [""]
 
+  # Woosen控制模块
+  Woosen:
+    description: "Woosen控制模块"
+    source_path: "General_Module/woosen"
+    build_path: "build/woosen"
+    dependencies: ["sunray_common", "sunray_tutorial"]
+
 # ========== 预定义组 ==========
 # 直接基于 build_deprecated 目录的脚本内容
 groups:
   # 无人机飞行控制系统
+  woosen:
+    description: "默认使用这个组，Woosen无人机飞行控制系统，包含无人机飞行控制，无人机控制节点，示例代码，Woosen控制模块"
+    modules: ["sunray_common", "sunray_uav_control", "sunray_tutorial", "Woosen"]
+
   uav:
-    description: "默认使用这个组，包含无人机飞行控制，仿真环境，仿真工具，仿真插件，通信桥接，无人机控制节点，示例代码，路径规划工具，视频推流，编队控制"
+    description: "包含无人机飞行控制，仿真环境，仿真工具，仿真插件，通信桥接，无人机控制节点，示例代码，路径规划工具，视频推流，编队控制"
     modules: ["sunray_common", "vrpn_client_ros", "sunray_simulator", "gazebo_plugin", "simulator_utils", "sunray_communication_bridge", "sunray_uav_control", "sunray_tutorial", "sunray_planner_utils", "sunray_gimbal", "sunray_media", "ego_planner", "sunray_formation"]
     
   # FMT无人机飞行控制系统
