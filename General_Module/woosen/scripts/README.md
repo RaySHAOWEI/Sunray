@@ -4,9 +4,17 @@ Tmux是一个终端复用器（terminal multiplexer），可以在一个终端�
 
 详见博客：https://blog.csdn.net/CSSDCC/article/details/121231906
 
+# 下载安装
+
+下载：
+sudo apt install tmux
+
+设置鼠标可用：
+tail -n 1 ~/.tmux.conf | grep -q "set -g mouse on" || echo 'set -g mouse on' | tee -a ~/.tmux.conf
+
+
 # sunray_tmux说明
 
-运行install_dependencies.sh脚本时，会自动安装tmux同时配置鼠标可用
 需要自行配置tmux可以修改~/.tmux.conf文件
 具体操作查看文档：https://think.leftshadow.com/docs/tmux/config/
 
