@@ -12,18 +12,21 @@
     <arg name="target_topic_name" default="/goal_1"/>
     <arg name="clear_obstacle_duration" default="1.4"/>
     <arg name="roll_time" default="0.1"/>
-    <arg name="DEBUG_MODE" default="0"/>
-    <arg name="odom_sub_topic" default="/baton/stereo3/odometry"/>
-    <arg name="depth_image_sub_topic" default="/baton/depth_image"/>
+
+    <!-- 是否自动起飞，默认不起飞，直接运行避障程序 -->
+    <arg name="AUTO_FLIGHT" default="false"/>
+    
+    <arg name="odom_sub_topic" default="/mavros/local_position/odom"/>
+    <arg name="depth_image_sub_topic" default="/camera/depth/image_rect_raw"/>
 
     <!-- 启动简易避障节点 -->
-    <node pkg="sunray_tutorial" 
-          type="simple_obstacle_avoidance" 
-          name="simple_obstacle_avoidance" 
+    <node pkg="woosen" 
+          type="Obstacle_Avoidance" 
+          name="Obstacle_Avoidance_$(arg uav_name)$(arg uav_id)" 
           output="screen"
           respawn="false">
 
-        <param name="DEBUG_MODE" value="$(arg DEBUG_MODE)"/>
+        <param name="AUTO_FLIGHT" value="$(arg AUTO_FLIGHT)"/>
         <param name="odom_sub_topic" value="$(arg odom_sub_topic)"/>
         <param name="depth_image_sub_topic" value="$(arg depth_image_sub_topic)"/>
         

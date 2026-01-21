@@ -26,7 +26,7 @@ double rotate_speed = 0.3;      // 旋转速度，单位：rad/s
 int obstacle_threshold = 1000;  // 小于1000mm的点视为障碍物
 double ratio_threshold = 0.3;   // 30%的点视为有障碍物
 double roll_time = 0.7;         // 旋转0.7秒
-int DEBUG_MODE = 0;        // 调试模式标志,设置为0以启用调试模式，跳过起飞等步骤，直接进入避障逻辑
+bool AUTO_FLIGHT = false;       // 是否自动起飞，默认不起飞，直接运行避障程序
 
 string odom_sub_topic = "/baton/stereo3/odometry"; // 立体视觉里程计话题
 string depth_image_sub_topic = "/baton/depth_image"; // 深度图像话题
@@ -162,7 +162,7 @@ SimpleObstacleInfo process_depth_image_simple()
     try
     {
         // 将ROS图像消息转换为OpenCV格式
-        cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(depth_image, sensor_msgs::image_encodings::MONO16);
+        cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(depth_image, sensor_msgs::image_encodings::TYPE_16UC1);
         cv::Mat depth_mat = cv_ptr->image;
 
         int rows = depth_mat.rows; // 图像高度
@@ -184,10 +184,10 @@ SimpleObstacleInfo process_depth_image_simple()
         cv::Mat right_region = depth_mat(right_roi);
 
         // 把区域内的0值（无效值）排除在外
-        left_region.setTo(0, left_region == 0);
-        center_region.setTo(0, center_region == 0);
-        right_region.setTo(0, right_region == 0);
-        
+        left_region.setTo(0, left_region <= 300);
+        center_region.setTo(0, center_region <= 300);
+        right_region.setTo(0, right_region <= 300);
+
         // 计算每个区域内小于阈值的点的比例
         double left_obstacle_ratio = (double)cv::countNonZero(left_region < obstacle_threshold) / (region_width * check_height);
         double center_obstacle_ratio = (double)cv::countNonZero(center_region < obstacle_threshold) / (region_width * check_height);
@@ -229,6 +229,19 @@ SimpleObstacleInfo process_depth_image_simple()
         cv::rectangle(depth_color, left_roi, cv::Scalar(255, 255, 255), 1);
         cv::rectangle(depth_color, center_roi, cv::Scalar(255, 255, 255), 1);
         cv::rectangle(depth_color, right_roi, cv::Scalar(255, 255, 255), 1);
+        // 在三个标记区域内选取三个点,标记出来，并打印其数值
+        cv::Point left_point(region_width / 2, start_row + check_height / 2);
+        cv::Point center_point(region_width + region_width / 2, start_row + check_height / 2);
+        cv::Point right_point(2 * region_width + region_width / 2, start_row + check_height / 2);
+        uint16_t left_depth = depth_mat.at<uint16_t>(left_point);
+        uint16_t center_depth = depth_mat.at<uint16_t>(center_point);
+        uint16_t right_depth = depth_mat.at<uint16_t>(right_point);
+        cv::circle(depth_color, left_point, 5, cv::Scalar(0, 0, 0), -1);
+        cv::circle(depth_color, center_point, 5, cv::Scalar(0, 0, 0), -1);
+        cv::circle(depth_color, right_point, 5, cv::Scalar(0, 0, 0), -1);
+        cv::putText(depth_color, cv::format("%d mm", left_depth), left_point, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255, 255, 255), 1);
+        cv::putText(depth_color, cv::format("%d mm", center_depth), center_point, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255, 255, 255), 1);
+        cv::putText(depth_color, cv::format("%d mm", right_depth), right_point, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255, 255, 255), 1);
         // 显示障碍物比例和状态
         std::string left_text = cv::format("Left: %.1f%%", left_obstacle_ratio * 100);
         std::string center_text = cv::format("Center: %.1f%%", center_obstacle_ratio * 100);
@@ -237,7 +250,7 @@ SimpleObstacleInfo process_depth_image_simple()
         cv::putText(depth_color, center_text, cv::Point(region_width + 10, start_row - 10), cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255, 255, 255), 1);
         cv::putText(depth_color, right_text, cv::Point(2 * region_width + 10, start_row - 10), cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255, 255, 255), 1);
         // 发布彩色深度图像
-        static ros::Publisher depth_color_pub = ros::NodeHandle().advertise<sensor_msgs::Image>("/baton/depth_color", 1);
+        static ros::Publisher depth_color_pub = ros::NodeHandle().advertise<sensor_msgs::Image>("/depth_color", 10);
         sensor_msgs::ImagePtr depth_color_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", depth_color).toImageMsg();
         depth_color_pub.publish(depth_color_msg);   
     }
@@ -316,9 +329,9 @@ int main(int argc, char **argv)
     Logger::setFilename("~/Documents/Sunray_log.txt");
 
     // 初始化ROS节点
-    ros::init(argc, argv, "simple_obstacle_avoidance");
+    ros::init(argc, argv, "Obstacle_Avoidance");
     ros::NodeHandle nh("~");
-    ros::Rate rate(20.0); // 20Hz控制频率
+    ros::Rate rate(60.0); // 20Hz控制频率
     node_name = ros::this_node::getName();
 
     // 读取参数
@@ -337,7 +350,7 @@ int main(int argc, char **argv)
     nh.param<double>("target_y", target_pos.y, 0.0);                            // 初始目标Y坐标，默认0米
     nh.param<double>("clear_obstacle_duration", clear_obstacle_duration, 2.0);  // 清除障碍后的前进时间（秒）
     nh.param<double>("roll_time", roll_time, 1.0);                              // 清除障碍后的旋转时间（秒）
-    nh.param<int>("DEBUG_MODE", DEBUG_MODE, 0);                              // 是否为调试模式
+    nh.param<bool>("AUTO_FLIGHT", AUTO_FLIGHT, false);                          // 是否自动起飞
     nh.param<string>("odom_sub_topic", odom_sub_topic, "/baton/stereo3/odometry");                              // 无人机名称，默认为"uav"
     nh.param<string>("depth_image_sub_topic", depth_image_sub_topic, "/baton/depth_image");        // 目标点话题名称
 
@@ -379,55 +392,54 @@ int main(int argc, char **argv)
 
     ros::Duration(0.5).sleep();
 
-    if (DEBUG_MODE == 1)
+    if (AUTO_FLIGHT == true) // 自动起飞模式，执行起飞等操作
     {
-    // 调试模式下，不进行起飞等操作，直接进入避障逻辑
-    // 等待无人机连接
-    int times = 0;
-    while (ros::ok() && !uav_state.connected)
-    {
-        ros::spinOnce();
+        // 等待无人机连接
+        int times = 0;
+        while (ros::ok() && !uav_state.connected)
+        {
+            ros::spinOnce();
+            ros::Duration(1.0).sleep();
+            if (times++ > 5)
+                Logger::print_color(int(LogColor::red), node_name, ": 等待无人机连接...");
+        }
+        Logger::print_color(int(LogColor::green), node_name, ": 无人机已连接!");
+
+        // 设置控制模式为命令控制
+        while (ros::ok() && uav_state.control_mode != sunray_msgs::UAVSetup::CMD_CONTROL)
+        {
+            uav_setup.cmd = sunray_msgs::UAVSetup::SET_CONTROL_MODE;
+            uav_setup.control_mode = "CMD_CONTROL";
+            uav_setup_pub.publish(uav_setup);
+            Logger::print_color(int(LogColor::green), node_name, ": 设置控制模式为命令控制");
+            ros::Duration(1.0).sleep();
+            ros::spinOnce();
+        }
+        Logger::print_color(int(LogColor::green), node_name, ": 控制模式设置成功!");
+
+        // 解锁无人机
+        while (ros::ok() && !uav_state.armed)
+        {
+            uav_setup.cmd = sunray_msgs::UAVSetup::ARM;
+            uav_setup_pub.publish(uav_setup);
+            Logger::print_color(int(LogColor::green), node_name, ": 正在解锁无人机");
+            ros::Duration(1.0).sleep();
+            ros::spinOnce();
+        }
+        Logger::print_color(int(LogColor::green), node_name, ": 无人机解锁成功!");
+
+        // 起飞
+        while (ros::ok() && abs(uav_state.position[2] - uav_state.home_pos[2] - uav_state.takeoff_height) > 0.2)
+        {
+            uav_cmd.cmd = sunray_msgs::UAVControlCMD::Takeoff;
+            control_cmd_pub.publish(uav_cmd);
+            Logger::print_color(int(LogColor::green), node_name, ": 正在起飞");
+            ros::Duration(4.0).sleep();
+            ros::spinOnce();
+        }
+        Logger::print_color(int(LogColor::green), node_name, ": 起飞成功!");
+
         ros::Duration(1.0).sleep();
-        if (times++ > 5)
-            Logger::print_color(int(LogColor::red), node_name, ": 等待无人机连接...");
-    }
-    Logger::print_color(int(LogColor::green), node_name, ": 无人机已连接!");
-
-    // 设置控制模式为命令控制
-    while (ros::ok() && uav_state.control_mode != sunray_msgs::UAVSetup::CMD_CONTROL)
-    {
-        uav_setup.cmd = sunray_msgs::UAVSetup::SET_CONTROL_MODE;
-        uav_setup.control_mode = "CMD_CONTROL";
-        uav_setup_pub.publish(uav_setup);
-        Logger::print_color(int(LogColor::green), node_name, ": 设置控制模式为命令控制");
-        ros::Duration(1.0).sleep();
-        ros::spinOnce();
-    }
-    Logger::print_color(int(LogColor::green), node_name, ": 控制模式设置成功!");
-
-    // 解锁无人机
-    while (ros::ok() && !uav_state.armed)
-    {
-        uav_setup.cmd = sunray_msgs::UAVSetup::ARM;
-        uav_setup_pub.publish(uav_setup);
-        Logger::print_color(int(LogColor::green), node_name, ": 正在解锁无人机");
-        ros::Duration(1.0).sleep();
-        ros::spinOnce();
-    }
-    Logger::print_color(int(LogColor::green), node_name, ": 无人机解锁成功!");
-
-    // 起飞
-    while (ros::ok() && abs(uav_state.position[2] - uav_state.home_pos[2] - uav_state.takeoff_height) > 0.2)
-    {
-        uav_cmd.cmd = sunray_msgs::UAVControlCMD::Takeoff;
-        control_cmd_pub.publish(uav_cmd);
-        Logger::print_color(int(LogColor::green), node_name, ": 正在起飞");
-        ros::Duration(4.0).sleep();
-        ros::spinOnce();
-    }
-    Logger::print_color(int(LogColor::green), node_name, ": 起飞成功!");
-
-    ros::Duration(1.0).sleep();
     }
 
     while (ros::ok())

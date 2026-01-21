@@ -152,7 +152,7 @@ include
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/woosen_node.cpp)
-add_executable(woosen_obstacle_avoidance src/simple_obstacle_avoidance.cpp)
+add_executable(Obstacle_Avoidance src/Obstacle_Avoidance.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -163,13 +163,13 @@ add_executable(woosen_obstacle_avoidance src/simple_obstacle_avoidance.cpp)
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-add_dependencies(woosen_obstacle_avoidance ${PROJECT_NAME}_gencpp)
+add_dependencies(Obstacle_Avoidance ${PROJECT_NAME}_gencpp)
 
 ## Specify libraries to link a library or executable target against
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-target_link_libraries(woosen_obstacle_avoidance ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
+target_link_libraries(Obstacle_Avoidance ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 
 #############
 ## Install ##
