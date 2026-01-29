@@ -1,0 +1,13 @@
+<launch>
+    <!-- 参数配置 -->
+    <arg name="uav_id" default="1"/>
+    <arg name="uav_name" default="uav"/>
+
+    <!-- 启动简易避障节点 -->
+    <node pkg="woosen" 
+          type="FSM_node" 
+          name="FSM_node_$(arg uav_name)$(arg uav_id)" 
+          output="screen"
+          respawn="false">
+    </node>
+</launch>

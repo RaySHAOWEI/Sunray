@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# 引入 TMUX 会话管理模块
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+source "${SCRIPT_DIR}/auto_tmux.sh"
+
+# ===================== 配置区域 =====================
+UAV_ID=1
+SESSION_NAME=sunray_tmux
+FIRST_WINDOW="extrn.1"
+LAYOUT="even-horizontal"
+
+declare -A TMUX_CONFIG=(
+    ["main"]="
+        roslaunch sunray_uav_control sunray_mavros_exp.launch uav_id:=${UAV_ID}
+        sleep 5 && roslaunch sunray_uav_control sunray_control_node.launch uav_id:=${UAV_ID}
+        sleep 5 && roslaunch realsense2_camera rs_camera_2.launch
+    "
+    ["extrn"]="
+        sleep 3 && roslaunch sunray_uav_control external_fusion.launch external_source:=5 enable_rviz:=false uav_id:=${UAV_ID}
+        sleep 5 && roslaunch woosen main_fsm.launch uav_id:=${UAV_ID}
+    "
+)
+# ===================== 配置结束 =====================
+# roslaunch sunray_uav_control sunray_mavros_exp.launch    
+# roslaunch mavros px4.launch     
+# sleep 5 && roslaunch vins realsense_d415.launch
+# sleep 5 && roslaunch vins vins_rviz.launch
+# 创建会话
+create_tmux_session
+
+# 可选：附加到会话
+attach_to_tmux_session

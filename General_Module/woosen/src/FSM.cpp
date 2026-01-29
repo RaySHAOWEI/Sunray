@@ -1,11 +1,14 @@
 #include "FSM.h"
 
+ros::Time last_time;            // 上次打印状态的时间
+
 FSM::FSM() : 
     current_mode_(DISABLE),
-    flight_state_(AUTO_DISABLE_FLIGHT),
-    rolling_state_(AUTO_DISABLE_ROLLING),
+    auto_state_(AUTO_DISABLE),
+    function_state_(FUNC_DISABLE),
+    last_function_state_(FUNC_DISABLE),
     rate_(60.0) {
-    // ��ʼ��ͨ������
+    // 初始化通道数据
     for (int i = 0; i < CHANNEL_LENGTH; i++) {
         channel_[i] = 0;
         last_channel_[i] = 0;
@@ -13,34 +16,106 @@ FSM::FSM() :
 }
 
 FSM::~FSM() {
-    // ��������
+    // 析构函数
 }
 
 bool FSM::init(ros::NodeHandle& nh) {
     nh_ = nh;
-    
-    // ���� /mavros/rc/in ����
-    rc_sub_ = nh_.subscribe("/mavros/rc/in", 10, &FSM::rcCallback, this);
-    
-    ROS_INFO("FSM Node Initialized. Waiting for RC data...");
-    
+    node_name_ = ros::this_node::getName();
+
+    // 读取参数
+    int uav_id;
+    std::string uav_name;
+    std::string target_topic_name;
+
+    nh_.param<int>("uav_id", uav_id, 1);                                         // 无人机ID，默认为1
+    nh_.param<std::string>("uav_name", uav_name, "uav");                       // 无人机名称，默认为"uav"
+    nh_.param<std::string>("target_topic_name", target_topic_name, "/goal_1"); // 目标点话题名称
+
+    // 构建无人机话题名称
+    uav_name = "/" + uav_name + std::to_string(uav_id);
+
+    // 创建订阅者
+    uav_state_sub_ = nh_.subscribe<sunray_msgs::UAVState>(uav_name + "/sunray/uav_state", 1, &FSM::uavStateCallback, this);
+    rc_sub_ = nh_.subscribe<mavros_msgs::RCIn>(uav_name + "/mavros/rc/in", 10, &FSM::rcCallback, this);
+
+    // 创建发布者
+    control_cmd_pub_ = nh_.advertise<sunray_msgs::UAVControlCMD>(uav_name + "/sunray/uav_control_cmd", 1);
+    uav_setup_pub_ = nh_.advertise<sunray_msgs::UAVSetup>(uav_name + "/sunray/setup", 1);
+    setpoint_pub_ = nh_.advertise<mavros_msgs::AttitudeTarget>("/mavros/setpoint_raw/local", 10);
+
+    // 初始化控制命令
+    uav_cmd_.header.stamp = ros::Time::now();
+    uav_cmd_.cmd = sunray_msgs::UAVControlCMD::Hover;
+    for (int i = 0; i < 3; i++) {
+        uav_cmd_.desired_pos[i] = 0.0;
+        uav_cmd_.desired_vel[i] = 0.0;
+        uav_cmd_.desired_acc[i] = 0.0;
+        uav_cmd_.desired_att[i] = 0.0;
+    }
+    uav_cmd_.desired_yaw = 0.0;
+    uav_cmd_.desired_yaw_rate = 0.0;
+
+    ros::Duration(0.5).sleep();
+
+    int times = 0;
+    while (ros::ok() && !uav_state_.connected) {
+        ros::spinOnce();
+        ros::Duration(1.0).sleep();
+        if (times++ > 5) {
+            Logger::print_color(int(LogColor::red), node_name_, ": 等待无人机连接...");
+        }
+    }
+    Logger::print_color(int(LogColor::green), node_name_, ": 无人机已连接!");
+
+    // 设置控制模式为命令控制
+    while (ros::ok() && uav_state_.control_mode != sunray_msgs::UAVSetup::CMD_CONTROL)
+    {
+        uav_setup_.cmd = sunray_msgs::UAVSetup::SET_CONTROL_MODE;
+        uav_setup_.control_mode = "CMD_CONTROL";
+        uav_setup_pub_.publish(uav_setup_);
+        Logger::print_color(int(LogColor::green), node_name_, ": 设置控制模式为命令控制");
+        ros::Duration(1.0).sleep();
+        ros::spinOnce();
+    }
+    Logger::print_color(int(LogColor::green), node_name_, ": 控制模式设置成功!");
+
+
     return true;
 }
 
 void FSM::run() {
     while (ros::ok()) {
-        // ����״̬���߼�
+        // 更新状态机逻辑
         updateState();
+
+        if (isUAVArmed()) {
+            // 调用当前状态处理函数
+            int idx = static_cast<int>(function_state_);
+            (this->*stateHandlers_[idx])();
+        }
+        // int idx = static_cast<int>(function_state_);
+        // (this->*stateHandlers_[idx])();
         
-        // ������һ�ε�ͨ������
+        // 更新上一次的通道数据
         for (int i = 0; i < CHANNEL_LENGTH; i++) {
             last_channel_[i] = channel_[i];
+        }
+
+        if (ros::Time::now() - last_time > ros::Duration(1.0)) {
+            last_time = ros::Time::now();      
+            Logger::print_color(int(LogColor::green), node_name_, ": ", state_name_);
         }
         
         ros::spinOnce();
         rate_.sleep();
     }
 }
+
+void FSM::uavStateCallback(const sunray_msgs::UAVState::ConstPtr &msg) {
+    uav_state_ = *msg;
+}
+
 
 void FSM::rcCallback(const mavros_msgs::RCIn::ConstPtr& msg) {
     for (int i = 0; i < CHANNEL_LENGTH; i++) {
@@ -49,56 +124,183 @@ void FSM::rcCallback(const mavros_msgs::RCIn::ConstPtr& msg) {
 }
 
 void FSM::updateState() {
-    // ���·���״̬��ͨ��7��
-    if (channel_[7] < 1250) {
-        flight_state_ = AUTO_DISABLE_FLIGHT;
-        // �ֶ��ӹܣ�ֻ����������
-    } else if (channel_[7] > 1750) {
-        flight_state_ = AUTO_ENABLE_FLIGHT;
-        // �Զ������������Զ����ϵȳ���
-    } else {
-        // ����û�յ��ź�
-    }
+    last_function_state_ = function_state_; // 保存上一次的状态
     
-    // ����ģʽ��ͨ��9��
+    // 更新模式（通道9）
     if (channel_[9] < 1200) {
         current_mode_ = DISABLE;
-        // �ֶ�ģʽ�����򲻸�Ԥ
-    } else if (channel_[9] < 1700 && channel_[9] > 1300) {
+        function_state_ = FUNC_DISABLE;
+        // 手动模式，程序不干预
+    } else if (channel_[9] > 1300 && channel_[9] < 1700) {
         current_mode_ = ROLLING;
-        // ����ģʽ
+        // 滚动模式
     } else if (channel_[9] > 1800) {
         current_mode_ = FLIGHT;
-        // ����ģʽ
+        // 飞行模式
+    }
+
+    // 更新飞行状态（通道7）
+    if (channel_[7] > 750 && channel_[7] < 1250) {
+        auto_state_ = AUTO_DISABLE;
+        // 手动接管，只控制油门量
+        if (current_mode_ == FLIGHT) {
+            function_state_ = FLIGHT_MANUAL;
+        }
+        else if (current_mode_ == ROLLING) {
+            function_state_ = ROLLING_MANUAL;
+        }else {
+            function_state_ = FUNC_DISABLE;
+        }
+    } else if (channel_[7] > 1750) {
+        auto_state_ = AUTO_ENABLE;
+        if (current_mode_ == FLIGHT) {
+            function_state_ = FLIGHT_AUTO;
+        }
+        else if (current_mode_ == ROLLING) {
+            function_state_ = ROLLING_AUTO;
+        } else {
+            function_state_ = FUNC_DISABLE;
+        }
+        // 自动开启，运行自动避障等程序
+    } else {
+        // 可能没收到信号
+        function_state_ = FUNC_DISABLE;
     }
 }
+
+void FSM::handleDisable() {
+    // 处理禁用状态
+    // while (ros::ok() && uav_state_.mode != "POSCTL") {
+    //     uav_setup_.cmd = sunray_msgs::UAVSetup::SET_PX4_MODE;
+    //     uav_setup_.control_mode = "POSCTL";
+    //     uav_setup_pub_.publish(uav_setup_);
+    //     ros::Duration(1.0).sleep();
+    //     ros::spinOnce();
+    // }
+    state_name_ = "处于禁用状态，等待模式切换...";
+}
+
+void FSM::handleRollingManual() {
+    // 处理滚动手动状态
+    mavros_msgs::PositionTarget target;
+    target.header.stamp = ros::Time::now();
+    target.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
+    target.type_mask = 
+        mavros_msgs::PositionTarget::IGNORE_PX |
+        mavros_msgs::PositionTarget::IGNORE_PY |
+        mavros_msgs::PositionTarget::IGNORE_VX |
+        mavros_msgs::PositionTarget::IGNORE_VY |
+        mavros_msgs::PositionTarget::IGNORE_VZ |
+        mavros_msgs::PositionTarget::IGNORE_AFX |
+        mavros_msgs::PositionTarget::IGNORE_AFY |
+        mavros_msgs::PositionTarget::IGNORE_AFZ |
+        mavros_msgs::PositionTarget::IGNORE_YAW |
+        mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
+    // 不忽略 PZ
+    
+    target.position.z = 0.3; // 10cm 高度（根据你的球体调整）
+    setpoint_pub_.publish(target);
+    // 这里添加滚动手动控制逻辑
+    state_name_ = "处于滚动手动状态，等待操作...";
+}
+
+void FSM::handleRollingAuto() {
+    // 处理滚动自动状态
+    if (last_function_state_ != function_state_)
+    {
+        // 进入滚动自动状态时的初始化操作 读取前方障碍自动避障
+    }
+    state_name_ = "处于滚动自动状态，等待操作...";
+}
+
+void FSM::handleFlightManual() {
+    // 处理飞行手动状态
+    static int fm_cnt = 0;
+    mavros_msgs::PositionTarget target;
+    if (last_function_state_ != function_state_)
+    {
+        // 进入飞行手动状态时的初始化操作
+        target.header.stamp = ros::Time::now();
+        target.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
+        target.type_mask = 
+            mavros_msgs::PositionTarget::IGNORE_PX |
+            mavros_msgs::PositionTarget::IGNORE_PY |
+            mavros_msgs::PositionTarget::IGNORE_VX |
+            mavros_msgs::PositionTarget::IGNORE_VY |
+            mavros_msgs::PositionTarget::IGNORE_VZ |
+            mavros_msgs::PositionTarget::IGNORE_AFX |
+            mavros_msgs::PositionTarget::IGNORE_AFY |
+            mavros_msgs::PositionTarget::IGNORE_AFZ |
+            mavros_msgs::PositionTarget::IGNORE_YAW |
+            mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
+        // 不忽略 PZ
+        
+        target.position.z = 0.6; // 10cm 高度（根据你的球体调整）
+        fm_cnt = 0;
+    }
+    else 
+    {
+        fm_cnt++;
+    }
+    if (fm_cnt <= 300)
+    {
+        setpoint_pub_.publish(target);
+    }
+    state_name_ = "处于飞行手动状态，等待操作...";
+}
+
+void FSM::handleFlightAuto() {
+    // 处理飞行自动状态
+
+    // 这里添加飞行自动控制逻辑 可能不用
+    state_name_ = "处于飞行自动状态，等待操作...";
+}
+
+void (FSM::*FSM::stateHandlers_[FSM::STATE_COUNT])() = {
+    &FSM::handleDisable,
+    &FSM::handleRollingManual,
+    &FSM::handleRollingAuto,
+    &FSM::handleFlightManual,
+    &FSM::handleFlightAuto
+};
 
 FSM::ModeSwitch FSM::getCurrentMode() const {
     return current_mode_;
 }
 
-FSM::FlightState FSM::getFlightState() const {
-    return flight_state_;
+FSM::Auto_state FSM::getAutoState() const {
+    return auto_state_;
 }
 
-FSM::RollingState FSM::getRollingState() const {
-    return rolling_state_;
+FSM::FUNCTION_STATE FSM::getFunctionState() const {
+    return function_state_;
+}
+
+FSM::FUNCTION_STATE FSM::getLastFunctionState() const {
+    return last_function_state_;
 }
 
 int main(int argc, char** argv) {
+    // 设置日志系统
+    Logger::init_default();
+    Logger::setPrintLevel(false);
+    Logger::setPrintTime(false);
+    Logger::setPrintToFile(false);
+    Logger::setFilename("~/Documents/Woosen_log.txt");
+
     ros::init(argc, argv, "FSM_node");
     ros::NodeHandle nh;
     
-    // ����FSMʵ��
+    // 创建FSM实例
     FSM fsm;
     
-    // ��ʼ��FSM
+    // 初始化FSM
     if (!fsm.init(nh)) {
         ROS_ERROR("Failed to initialize FSM.");
         return -1;
     }
     
-    // ����FSM
+    // 运行FSM
     fsm.run();
     
     return 0;
