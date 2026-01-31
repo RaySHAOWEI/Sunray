@@ -18,13 +18,13 @@ class RollingController {
 public:
     RollingController() : nh_() {
         // 订阅
-        rc_sub_ = nh_.subscribe("/mavros/rc/in", 10, &RollingController::rcCallback, this);
+        rc_sub_ = nh_.subscribe("/uav1/mavros/rc/in", 10, &RollingController::rcCallback, this);
         
         // 订阅深度图像
         depth_sub_ = nh_.subscribe(depth_image_topic_, 1, &RollingController::depthCallback, this);
 
         // 发布高度 setpoint（仅 Z 轴）
-        setpoint_pub_ = nh_.advertise<mavros_msgs::PositionTarget>("/mavros/setpoint_raw/local", 10);
+        setpoint_pub_ = nh_.advertise<mavros_msgs::PositionTarget>("/uav1/mavros/setpoint_raw/local", 10);
         
         // 发布彩色深度图像
         depth_color_pub_ = nh_.advertise<sensor_msgs::Image>("/depth_color", 10);

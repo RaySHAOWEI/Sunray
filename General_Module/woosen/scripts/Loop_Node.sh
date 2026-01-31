@@ -13,12 +13,11 @@ LAYOUT="even-horizontal"
 declare -A TMUX_CONFIG=(
     ["main"]="
         roslaunch sunray_uav_control sunray_mavros_exp.launch uav_id:=${UAV_ID}
-        sleep 5 && roslaunch sunray_uav_control sunray_control_node.launch uav_id:=${UAV_ID}
         sleep 5 && roslaunch realsense2_camera rs_camera_2.launch
     "
     ["extrn"]="
-        sleep 3 && roslaunch sunray_uav_control external_fusion.launch external_source:=5 enable_rviz:=false uav_id:=${UAV_ID}
-        sleep 5 && roslaunch woosen main_fsm.launch uav_id:=${UAV_ID}
+
+        sleep 5 && roslaunch woosen fsm_node.launch uav_id:=${UAV_ID}
     "
 )
 # ===================== 配置结束 =====================
@@ -26,6 +25,8 @@ declare -A TMUX_CONFIG=(
 # roslaunch mavros px4.launch     
 # sleep 5 && roslaunch vins realsense_d415.launch
 # sleep 5 && roslaunch vins vins_rviz.launch
+# sleep 5 && roslaunch sunray_uav_control sunray_control_node.launch uav_id:=${UAV_ID}
+# sleep 3 && roslaunch sunray_uav_control external_fusion.launch external_source:=5 enable_rviz:=false uav_id:=${UAV_ID}
 # 创建会话
 create_tmux_session
 
