@@ -1,0 +1,21 @@
+<launch>
+  <!-- FSM节点配置 -->
+  <node pkg="woosen" type="FSM_node" name="rolling_controller" output="screen">
+    <!-- 飞行参数 -->
+    <param name="rolling_height" value="0.1" />
+    <param name="avoid_height" value="0.8" />
+    
+    <!-- 控制参数 -->
+    <param name="rc_channel_switch" value="7" />
+    
+    <!-- 障碍物检测参数 -->
+    <param name="obstacle_threshold" value="1000" />
+    <param name="ratio_threshold" value="0.3" />
+
+    <!-- 深度图像参数 -->
+    <param name="depth_image_topic" value="/camera/depth/image_rect" />
+    
+    <!-- 是否自动控高 -->
+    <param name="auto_height_control" value="true" />
+  </node>
+</launch>
