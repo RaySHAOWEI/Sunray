@@ -41,6 +41,7 @@ public:
         current_state_ = DISABLE;
         obstacle_ahead_ = false;
         depth_image_received_ = false;
+        last_print_time_ = ros::Time::now();
     }
 
     void run() {
@@ -48,6 +49,7 @@ public:
 
         while (ros::ok()) {
             executeControl();
+            printStatus();
             ros::spinOnce();
             rate.sleep();
         }
@@ -182,6 +184,52 @@ private:
         setpoint_pub_.publish(target);
     }
 
+    void printStatus() {
+        // 获取当前时间
+        ros::Time current_time = ros::Time::now();
+        
+        // 检查是否已经过了1秒
+        if (current_time - last_print_time_ < ros::Duration(1.0)) {
+            return;
+        }
+        
+        // 更新上次打印时间
+        last_print_time_ = current_time;
+        
+        // 打印状态信息
+        ROS_INFO("==================== Rolling Controller Status ====================");
+        
+        // 打印当前状态
+        std::string state_str = (current_state_ == DISABLE) ? "DISABLE" : "ROLLING_AUTO";
+        ROS_INFO("Current State: [%s]", state_str.c_str());
+        
+        // 打印深度图像接收状态
+        ROS_INFO("Depth Image Received: [%s]", depth_image_received_ ? "Yes" : "No");
+        
+        // 打印障碍物检测状态
+        ROS_INFO("Obstacle Ahead: [%s]", obstacle_ahead_ ? "Yes" : "No");
+        
+        // 打印高度信息
+        ROS_INFO("Target Height: [%.3f] [m]", target_z_);
+        ROS_INFO("Rolling Height: [%.3f] [m]", rolling_height_);
+        ROS_INFO("Avoid Height: [%.3f] [m]", avoid_height_);
+        
+        // 打印自动控高状态
+        ROS_INFO("Auto Height Control: [%s]", auto_height_control_ ? "Enabled" : "Disabled");
+        
+        // 打印障碍物检测参数
+        ROS_INFO("Obstacle Threshold: [%d] [mm]", obstacle_threshold_);
+        ROS_INFO("Ratio Threshold: [%.2f] [%%]", ratio_threshold_ * 100);
+        
+        // 打印RC通道信息
+        ROS_INFO("RC Channel Switch: [%d]", rc_channel_switch_);
+        
+        // 打印深度图像话题
+        ROS_INFO("Depth Image Topic: [%s]", depth_image_topic_.c_str());
+        
+        ROS_INFO("==============================================================");
+    }
+
     // ========== 成员变量 ==========
     ros::NodeHandle nh_;
     ros::Subscriber rc_sub_, depth_sub_;
@@ -191,6 +239,7 @@ private:
     bool obstacle_ahead_;
     bool depth_image_received_;
     double target_z_; // 目标高度
+    ros::Time last_print_time_; // 上次打印时间
 
     // 参数
     double rolling_height_;
