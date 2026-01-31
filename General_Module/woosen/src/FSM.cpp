@@ -1,228 +1,171 @@
-#include "FSM.h"
+#include <ros/ros.h>
+#include <mavros_msgs/State.h>
+#include <mavros_msgs/RCIn.h>
+#include <mavros_msgs/PositionTarget.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <sensor_msgs/Image.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/opencv.hpp>
+#include <std_msgs/Header.h>
 
-ros::Time last_time;            // 上次打印状态的时间
+// 两种状态
+enum State {
+    DISABLE,
+    ROLLING_AUTO
+};
 
-FSM::FSM() : 
-    current_mode_(DISABLE),
-    auto_state_(AUTO_DISABLE),
-    function_state_(FUNC_DISABLE),
-    last_function_state_(FUNC_DISABLE),
-    rate_(60.0) {
-    // 初始化通道数据
-    for (int i = 0; i < CHANNEL_LENGTH; i++) {
-        channel_[i] = 0;
-        last_channel_[i] = 0;
-    }
-}
-
-FSM::~FSM() {
-    // 析构函数
-}
-
-bool FSM::init(ros::NodeHandle& nh) {
-    nh_ = nh;
-    node_name_ = ros::this_node::getName();
-
-    // 读取参数
-    int uav_id;
-    std::string uav_name;
-    std::string target_topic_name;
-
-    nh_.param<int>("uav_id", uav_id, 1);                                         // 无人机ID，默认为1
-    nh_.param<std::string>("uav_name", uav_name, "uav");                       // 无人机名称，默认为"uav"
-    nh_.param<std::string>("target_topic_name", target_topic_name, "/goal_1"); // 目标点话题名称
-
-    // 构建无人机话题名称
-    uav_name = "/" + uav_name + std::to_string(uav_id);
-
-    // 创建订阅者
-    uav_state_sub_ = nh_.subscribe<sunray_msgs::UAVState>(uav_name + "/sunray/uav_state", 1, &FSM::uavStateCallback, this);
-    rc_sub_ = nh_.subscribe<mavros_msgs::RCIn>(uav_name + "/mavros/rc/in", 10, &FSM::rcCallback, this);
-
-    // 创建发布者
-    control_cmd_pub_ = nh_.advertise<sunray_msgs::UAVControlCMD>(uav_name + "/sunray/uav_control_cmd", 1);
-    uav_setup_pub_ = nh_.advertise<sunray_msgs::UAVSetup>(uav_name + "/sunray/setup", 1);
-    setpoint_pub_ = nh_.advertise<mavros_msgs::AttitudeTarget>("/mavros/setpoint_raw/local", 10);
-
-    // 初始化控制命令
-    uav_cmd_.header.stamp = ros::Time::now();
-    uav_cmd_.cmd = sunray_msgs::UAVControlCMD::Hover;
-    for (int i = 0; i < 3; i++) {
-        uav_cmd_.desired_pos[i] = 0.0;
-        uav_cmd_.desired_vel[i] = 0.0;
-        uav_cmd_.desired_acc[i] = 0.0;
-        uav_cmd_.desired_att[i] = 0.0;
-    }
-    uav_cmd_.desired_yaw = 0.0;
-    uav_cmd_.desired_yaw_rate = 0.0;
-
-    ros::Duration(0.5).sleep();
-
-    int times = 0;
-    while (ros::ok() && !uav_state_.connected) {
-        ros::spinOnce();
-        ros::Duration(1.0).sleep();
-        if (times++ > 5) {
-            Logger::print_color(int(LogColor::red), node_name_, ": 等待无人机连接...");
-        }
-    }
-    Logger::print_color(int(LogColor::green), node_name_, ": 无人机已连接!");
-
-    // 设置控制模式为命令控制
-    while (ros::ok() && uav_state_.control_mode != sunray_msgs::UAVSetup::CMD_CONTROL)
-    {
-        uav_setup_.cmd = sunray_msgs::UAVSetup::SET_CONTROL_MODE;
-        uav_setup_.control_mode = "CMD_CONTROL";
-        uav_setup_pub_.publish(uav_setup_);
-        Logger::print_color(int(LogColor::green), node_name_, ": 设置控制模式为命令控制");
-        ros::Duration(1.0).sleep();
-        ros::spinOnce();
-    }
-    Logger::print_color(int(LogColor::green), node_name_, ": 控制模式设置成功!");
-
-
-    return true;
-}
-
-void FSM::run() {
-    while (ros::ok()) {
-        // 更新状态机逻辑
-        updateState();
-
-        if (isUAVArmed()) {
-            // 调用当前状态处理函数
-            int idx = static_cast<int>(function_state_);
-            (this->*stateHandlers_[idx])();
-        }
-        // int idx = static_cast<int>(function_state_);
-        // (this->*stateHandlers_[idx])();
+class RollingController {
+public:
+    RollingController() : nh_() {
+        // 订阅
+        rc_sub_ = nh_.subscribe("/mavros/rc/in", 10, &RollingController::rcCallback, this);
         
-        // 更新上一次的通道数据
-        for (int i = 0; i < CHANNEL_LENGTH; i++) {
-            last_channel_[i] = channel_[i];
-        }
+        // 订阅深度图像
+        depth_sub_ = nh_.subscribe(depth_image_topic_, 1, &RollingController::depthCallback, this);
 
-        if (ros::Time::now() - last_time > ros::Duration(1.0)) {
-            last_time = ros::Time::now();      
-            Logger::print_color(int(LogColor::green), node_name_, ": ", state_name_);
+        // 发布高度 setpoint（仅 Z 轴）
+        setpoint_pub_ = nh_.advertise<mavros_msgs::PositionTarget>("/mavros/setpoint_raw/local", 10);
+        
+        // 发布彩色深度图像
+        depth_color_pub_ = nh_.advertise<sensor_msgs::Image>("/depth_color", 10);
+
+        // 参数
+        nh_.param("rolling_height", rolling_height_, 0.1);   // 贴地高度 (米)
+        nh_.param("avoid_height", avoid_height_, 0.8);       // 避障高度 (米)
+        nh_.param("rc_channel_switch", rc_channel_switch_, 7); // 控制开关的通道（默认 CH7）
+        nh_.param("obstacle_threshold", obstacle_threshold_, 1000); // 小于1000mm的点视为障碍物
+        nh_.param("ratio_threshold", ratio_threshold_, 0.3);   // 30%的点视为有障碍物
+        nh_.param("depth_image_topic", depth_image_topic_, std::string("/camera/depth/image_rect_raw")); // 深度图像话题
+        nh_.param("auto_height_control", auto_height_control_, true); // 是否自动控高
+
+        current_state_ = DISABLE;
+        obstacle_ahead_ = false;
+        depth_image_received_ = false;
+    }
+
+    void run() {
+        ros::Rate rate(20); // 20 Hz
+
+        while (ros::ok()) {
+            executeControl();
+            ros::spinOnce();
+            rate.sleep();
+        }
+    }
+
+private:
+    void rcCallback(const mavros_msgs::RCIn::ConstPtr& msg) {
+        if (msg->channels.size() > rc_channel_switch_) {
+            int ch_val = msg->channels[rc_channel_switch_];
+            // 三段开关：低 = DISABLE, 高 = ROLLING_AUTO
+            if (ch_val > 1750) {
+                current_state_ = ROLLING_AUTO;
+            } else {
+                current_state_ = DISABLE;
+            }
+        }
+    }
+
+    // 深度图障碍检测
+    void depthCallback(const sensor_msgs::Image::ConstPtr& msg) {
+        try {
+            // 将ROS图像消息转换为OpenCV格式
+            cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::TYPE_16UC1);
+            cv::Mat depth_mat = cv_ptr->image;
+
+            int rows = depth_mat.rows; // 图像高度
+            int cols = depth_mat.cols; // 图像宽度
+
+            // 将图像分成三个区域：左、中、右
+            int region_width = cols / 3;    // 每个区域的宽度
+            int check_height = rows / 5;    // 检查区域的高度（图像中间部分）
+            int start_row = 2 * rows / 5;   // 开始检查的行（避开天空和地面）
+
+            // 定义三个检查区域
+            cv::Rect left_roi(0, start_row, region_width, check_height);                 // 左侧区域
+            cv::Rect center_roi(region_width, start_row, region_width, check_height);    // 中间区域
+            cv::Rect right_roi(2 * region_width, start_row, region_width, check_height); // 右侧区域
+
+            // 计算每个区域的平均深度
+            cv::Mat left_region = depth_mat(left_roi);
+            cv::Mat center_region = depth_mat(center_roi);
+            cv::Mat right_region = depth_mat(right_roi);
+
+            // 把区域内的0值（无效值）排除在外
+            left_region.setTo(0, left_region <= 300);
+            center_region.setTo(0, center_region <= 300);
+            right_region.setTo(0, right_region <= 300);
+
+            // 计算每个区域内小于阈值的点的比例
+            double left_obstacle_ratio = (double)cv::countNonZero(left_region < obstacle_threshold_) / (region_width * check_height);
+            double center_obstacle_ratio = (double)cv::countNonZero(center_region < obstacle_threshold_) / (region_width * check_height);
+            double right_obstacle_ratio = (double)cv::countNonZero(right_region < obstacle_threshold_) / (region_width * check_height);
+
+            // 判断是否有障碍物
+            obstacle_ahead_ = (center_obstacle_ratio > ratio_threshold_);
+
+            // 将原本的深度图像转换成彩色，标记三个区域，并把三个区域内的障碍物比例显示出来，同时显示该区域是否有障碍物，把转换后的图像发布成新话题
+            cv::Mat depth_color;
+            double min_val, max_val;
+            cv::minMaxLoc(depth_mat, &min_val, &max_val);
+            depth_mat.convertTo(depth_color, CV_8U, 255.0 / max_val);
+            cv::applyColorMap(depth_color, depth_color, cv::COLORMAP_JET);
+            // 标记区域
+            cv::rectangle(depth_color, left_roi, cv::Scalar(255, 255, 255), 1);
+            cv::rectangle(depth_color, center_roi, cv::Scalar(255, 255, 255), 1);
+            cv::rectangle(depth_color, right_roi, cv::Scalar(255, 255, 255), 1);
+            // 在三个标记区域内选取三个点,标记出来，并打印其数值
+            cv::Point left_point(region_width / 2, start_row + check_height / 2);
+            cv::Point center_point(region_width + region_width / 2, start_row + check_height / 2);
+            cv::Point right_point(2 * region_width + region_width / 2, start_row + check_height / 2);
+            uint16_t left_depth = depth_mat.at<uint16_t>(left_point);
+            uint16_t center_depth = depth_mat.at<uint16_t>(center_point);
+            uint16_t right_depth = depth_mat.at<uint16_t>(right_point);
+            cv::circle(depth_color, left_point, 5, cv::Scalar(0, 0, 0), -1);
+            cv::circle(depth_color, center_point, 5, cv::Scalar(0, 0, 0), -1);
+            cv::circle(depth_color, right_point, 5, cv::Scalar(0, 0, 0), -1);
+            cv::putText(depth_color, cv::format("%d mm", left_depth), left_point, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255, 255, 255), 1);
+            cv::putText(depth_color, cv::format("%d mm", center_depth), center_point, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255, 255, 255), 1);
+            cv::putText(depth_color, cv::format("%d mm", right_depth), right_point, cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(255, 255, 255), 1);
+            // 显示障碍物比例和状态
+            std::string left_text = cv::format("Left: %.1f%%", left_obstacle_ratio * 100);
+            std::string center_text = cv::format("Center: %.1f%%", center_obstacle_ratio * 100);
+            std::string right_text = cv::format("Right: %.1f%%", right_obstacle_ratio * 100);
+            cv::putText(depth_color, left_text, cv::Point(10, start_row - 10), cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255, 255, 255), 1);
+            cv::putText(depth_color, center_text, cv::Point(region_width + 10, start_row - 10), cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255, 255, 255), 1);
+            cv::putText(depth_color, right_text, cv::Point(2 * region_width + 10, start_row - 10), cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(255, 255, 255), 1);
+            // 显示障碍物状态
+            std::string center_status = obstacle_ahead_ ? "Blocked" : "Clear";
+            cv::putText(depth_color, center_status, cv::Point(region_width + 10, start_row + check_height + 20), cv::FONT_HERSHEY_SIMPLEX, 0.4, obstacle_ahead_ ? cv::Scalar(0, 0, 255) : cv::Scalar(0, 255, 0), 1);
+            // 发布彩色深度图像
+            sensor_msgs::ImagePtr depth_color_msg = cv_bridge::CvImage(std_msgs::Header(), "bgr8", depth_color).toImageMsg();
+            depth_color_pub_.publish(depth_color_msg);
+
+            depth_image_received_ = true;
+        } catch (cv_bridge::Exception &e) {
+            ROS_ERROR("深度图像转换错误: %s", e.what());
+        }
+    }
+
+    void executeControl() {
+        if (current_state_ == DISABLE) {
+            // 不发布任何 setpoint，完全交由遥控器控制
+            return;
         }
         
-        ros::spinOnce();
-        rate_.sleep();
-    }
-}
-
-void FSM::uavStateCallback(const sunray_msgs::UAVState::ConstPtr &msg) {
-    uav_state_ = *msg;
-}
-
-
-void FSM::rcCallback(const mavros_msgs::RCIn::ConstPtr& msg) {
-    for (int i = 0; i < CHANNEL_LENGTH; i++) {
-        channel_[i] = msg->channels[i];
-    }
-}
-
-void FSM::updateState() {
-    last_function_state_ = function_state_; // 保存上一次的状态
-    
-    // 更新模式（通道9）
-    if (channel_[9] < 1200) {
-        current_mode_ = DISABLE;
-        function_state_ = FUNC_DISABLE;
-        // 手动模式，程序不干预
-    } else if (channel_[9] > 1300 && channel_[9] < 1700) {
-        current_mode_ = ROLLING;
-        // 滚动模式
-    } else if (channel_[9] > 1800) {
-        current_mode_ = FLIGHT;
-        // 飞行模式
-    }
-
-    // 更新飞行状态（通道7）
-    if (channel_[7] > 750 && channel_[7] < 1250) {
-        auto_state_ = AUTO_DISABLE;
-        // 手动接管，只控制油门量
-        if (current_mode_ == FLIGHT) {
-            function_state_ = FLIGHT_MANUAL;
-        }
-        else if (current_mode_ == ROLLING) {
-            function_state_ = ROLLING_MANUAL;
-        }else {
-            function_state_ = FUNC_DISABLE;
-        }
-    } else if (channel_[7] > 1750) {
-        auto_state_ = AUTO_ENABLE;
-        if (current_mode_ == FLIGHT) {
-            function_state_ = FLIGHT_AUTO;
-        }
-        else if (current_mode_ == ROLLING) {
-            function_state_ = ROLLING_AUTO;
+        // ROLLING_AUTO: 自动控高
+        if (auto_height_control_) {
+            double target_z_ = obstacle_ahead_ ? avoid_height_ : rolling_height_;
         } else {
-            function_state_ = FUNC_DISABLE;
+            // 手动控高
+            double target_z_ = rolling_height_;
         }
-        // 自动开启，运行自动避障等程序
-    } else {
-        // 可能没收到信号
-        function_state_ = FUNC_DISABLE;
-    }
-}
 
-void FSM::handleDisable() {
-    // 处理禁用状态
-    // while (ros::ok() && uav_state_.mode != "POSCTL") {
-    //     uav_setup_.cmd = sunray_msgs::UAVSetup::SET_PX4_MODE;
-    //     uav_setup_.control_mode = "POSCTL";
-    //     uav_setup_pub_.publish(uav_setup_);
-    //     ros::Duration(1.0).sleep();
-    //     ros::spinOnce();
-    // }
-    state_name_ = "处于禁用状态，等待模式切换...";
-}
-
-void FSM::handleRollingManual() {
-    // 处理滚动手动状态
-    mavros_msgs::PositionTarget target;
-    target.header.stamp = ros::Time::now();
-    target.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
-    target.type_mask = 
-        mavros_msgs::PositionTarget::IGNORE_PX |
-        mavros_msgs::PositionTarget::IGNORE_PY |
-        mavros_msgs::PositionTarget::IGNORE_VX |
-        mavros_msgs::PositionTarget::IGNORE_VY |
-        mavros_msgs::PositionTarget::IGNORE_VZ |
-        mavros_msgs::PositionTarget::IGNORE_AFX |
-        mavros_msgs::PositionTarget::IGNORE_AFY |
-        mavros_msgs::PositionTarget::IGNORE_AFZ |
-        mavros_msgs::PositionTarget::IGNORE_YAW |
-        mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
-    // 不忽略 PZ
-    
-    target.position.z = 0.3; // 10cm 高度（根据你的球体调整）
-    setpoint_pub_.publish(target);
-    // 这里添加滚动手动控制逻辑
-    state_name_ = "处于滚动手动状态，等待操作...";
-}
-
-void FSM::handleRollingAuto() {
-    // 处理滚动自动状态
-    if (last_function_state_ != function_state_)
-    {
-        // 进入滚动自动状态时的初始化操作 读取前方障碍自动避障
-    }
-    state_name_ = "处于滚动自动状态，等待操作...";
-}
-
-void FSM::handleFlightManual() {
-    // 处理飞行手动状态
-    static int fm_cnt = 0;
-    mavros_msgs::PositionTarget target;
-    if (last_function_state_ != function_state_)
-    {
-        // 进入飞行手动状态时的初始化操作
+        // 发布仅包含 Z 轴的位置 setpoint
+        mavros_msgs::PositionTarget target;
         target.header.stamp = ros::Time::now();
         target.coordinate_frame = mavros_msgs::PositionTarget::FRAME_LOCAL_NED;
-        target.type_mask = 
+        target.type_mask =
             mavros_msgs::PositionTarget::IGNORE_PX |
             mavros_msgs::PositionTarget::IGNORE_PY |
             mavros_msgs::PositionTarget::IGNORE_VX |
@@ -233,75 +176,35 @@ void FSM::handleFlightManual() {
             mavros_msgs::PositionTarget::IGNORE_AFZ |
             mavros_msgs::PositionTarget::IGNORE_YAW |
             mavros_msgs::PositionTarget::IGNORE_YAW_RATE;
-        // 不忽略 PZ
-        
-        target.position.z = 0.6; // 10cm 高度（根据你的球体调整）
-        fm_cnt = 0;
-    }
-    else 
-    {
-        fm_cnt++;
-    }
-    if (fm_cnt <= 300)
-    {
+        // 注意：PZ 未被忽略 → 飞控将跟踪此高度
+
+        target.position.z = target_z_;
         setpoint_pub_.publish(target);
     }
-    state_name_ = "处于飞行手动状态，等待操作...";
-}
 
-void FSM::handleFlightAuto() {
-    // 处理飞行自动状态
+    // ========== 成员变量 ==========
+    ros::NodeHandle nh_;
+    ros::Subscriber rc_sub_, depth_sub_;
+    ros::Publisher setpoint_pub_, depth_color_pub_;
 
-    // 这里添加飞行自动控制逻辑 可能不用
-    state_name_ = "处于飞行自动状态，等待操作...";
-}
+    State current_state_;
+    bool obstacle_ahead_;
+    bool depth_image_received_;
+    double target_z_; // 目标高度
 
-void (FSM::*FSM::stateHandlers_[FSM::STATE_COUNT])() = {
-    &FSM::handleDisable,
-    &FSM::handleRollingManual,
-    &FSM::handleRollingAuto,
-    &FSM::handleFlightManual,
-    &FSM::handleFlightAuto
+    // 参数
+    double rolling_height_;
+    double avoid_height_;
+    int rc_channel_switch_;
+    int obstacle_threshold_;
+    double ratio_threshold_;
+    std::string depth_image_topic_;
+    bool auto_height_control_; // 是否自动控高
 };
 
-FSM::ModeSwitch FSM::getCurrentMode() const {
-    return current_mode_;
-}
-
-FSM::Auto_state FSM::getAutoState() const {
-    return auto_state_;
-}
-
-FSM::FUNCTION_STATE FSM::getFunctionState() const {
-    return function_state_;
-}
-
-FSM::FUNCTION_STATE FSM::getLastFunctionState() const {
-    return last_function_state_;
-}
-
 int main(int argc, char** argv) {
-    // 设置日志系统
-    Logger::init_default();
-    Logger::setPrintLevel(false);
-    Logger::setPrintTime(false);
-    Logger::setPrintToFile(false);
-    Logger::setFilename("~/Documents/Woosen_log.txt");
-
-    ros::init(argc, argv, "FSM_node");
-    ros::NodeHandle nh;
-    
-    // 创建FSM实例
-    FSM fsm;
-    
-    // 初始化FSM
-    if (!fsm.init(nh)) {
-        ROS_ERROR("Failed to initialize FSM.");
-        return -1;
-    }
-    
-    // 运行FSM
-    fsm.run();
-    
+    ros::init(argc, argv, "rolling_controller");
+    RollingController controller;
+    controller.run();
     return 0;
 }
