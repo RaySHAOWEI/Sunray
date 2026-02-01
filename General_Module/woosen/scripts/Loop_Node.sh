@@ -7,16 +7,13 @@ source "${SCRIPT_DIR}/auto_tmux.sh"
 # ===================== 配置区域 =====================
 UAV_ID=1
 SESSION_NAME=sunray_tmux
-FIRST_WINDOW="extrn.1"
+FIRST_WINDOW="main.1"
 LAYOUT="even-horizontal"
 
 declare -A TMUX_CONFIG=(
     ["main"]="
         roslaunch sunray_uav_control sunray_mavros_exp.launch uav_id:=${UAV_ID}
         sleep 5 && roslaunch realsense2_camera rs_camera_2.launch
-    "
-    ["extrn"]="
-
         sleep 5 && roslaunch woosen fsm_node.launch uav_id:=${UAV_ID}
     "
 )

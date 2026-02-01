@@ -23,6 +23,12 @@ public:
         // 订阅深度图像
         depth_sub_ = nh_.subscribe(depth_image_topic_, 1, &RollingController::depthCallback, this);
 
+        // 订阅状态
+        state_sub_ = nh_.subscribe("/uav1/mavros/state", 10, &RollingController::stateCallback, this);
+
+        // 订阅位置
+        pose_sub_ = nh_.subscribe("/uav1/mavros/local_position/pose", 10, &RollingController::poseCallback, this);
+
         // 发布高度 setpoint（仅 Z 轴）
         setpoint_pub_ = nh_.advertise<mavros_msgs::PositionTarget>("/uav1/mavros/setpoint_raw/local", 10);
         
@@ -66,6 +72,17 @@ private:
                 current_state_ = DISABLE;
             }
         }
+    }
+
+    // 状态回调
+    void stateCallback(const mavros_msgs::State::ConstPtr& msg) {
+        armed_ = msg->armed;
+        mode_ = msg->mode;
+    }
+
+    // 位置回调
+    void poseCallback(const geometry_msgs::PoseStamped::ConstPtr& msg) {
+        current_z_ = msg->pose.position.z;
     }
 
     // 深度图障碍检测
@@ -154,13 +171,20 @@ private:
             // 不发布任何 setpoint，完全交由遥控器控制
             return;
         }
+
+        if (!armed_) {
+            // 未解锁，不发布任何 setpoint
+            // 获取当前高度
+            ground_height_ = current_z_;
+            return;
+        }
         
         // ROLLING_AUTO: 自动控高
         if (auto_height_control_) {
             double target_z_ = obstacle_ahead_ ? avoid_height_ : rolling_height_;
         } else {
             // 手动控高
-            double target_z_ = rolling_height_;
+            double target_z_ = ground_height_ + 0.1;
         }
 
         // 发布仅包含 Z 轴的位置 setpoint
@@ -232,12 +256,22 @@ private:
 
     // ========== 成员变量 ==========
     ros::NodeHandle nh_;
-    ros::Subscriber rc_sub_, depth_sub_;
+    ros::Subscriber rc_sub_, depth_sub_, state_sub_, pose_sub_;
     ros::Publisher setpoint_pub_, depth_color_pub_;
 
     State current_state_;
+
+    // 无人机状态
+    bool armed_;
+    std::string mode_;
+
+    // 当前位置
+    geometry_msgs::PoseStamped current_pose_;
+
     bool obstacle_ahead_;
     bool depth_image_received_;
+    double current_z_; // 当前高度
+    double ground_height_; // 地面高度
     double target_z_; // 目标高度
     ros::Time last_print_time_; // 上次打印时间
 
